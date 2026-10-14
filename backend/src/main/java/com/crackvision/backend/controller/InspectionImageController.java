@@ -81,7 +81,7 @@ public class InspectionImageController {
     }
 
     @DeleteMapping("/{inspectionId}/images/{imageId}")
-    @PreAuthorize("hasAnyRole('SITE_WORKER', 'SITE_ENGINEER', 'ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('SITE_WORKER', 'SITE_ENGINEER', 'ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<?> deleteImage(
             @PathVariable Long inspectionId,
             @PathVariable Long imageId) {

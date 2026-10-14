@@ -65,7 +65,7 @@ export default function ReviewsView({
   const [modalTargetInspection, setModalTargetInspection] = useState(null)
   const [selectedReviewDetails, setSelectedReviewDetails] = useState(null)
 
-  const canSubmitReview = userRole === 'SITE_ENGINEER' || userRole === 'ADMIN'
+  const canSubmitReview = userRole === 'SITE_ENGINEER' || userRole === 'ADMIN' || userRole === 'SITE_ADMIN'
 
   // Set of inspection IDs that already possess certified reviews
   const reviewedInspectionIds = useMemo(() => {

@@ -87,6 +87,21 @@ class AdminUserControllerTest {
     }
 
     @Test
+    void testUpdateUserRoleToSiteAdmin() throws Exception {
+        User updated = new User(10L, "Worker John", "worker@crackvision.com", "pass", Role.SITE_ADMIN, "2026-10-12");
+        when(userService.updateUserRole(eq(10L), eq(Role.SITE_ADMIN))).thenReturn(updated);
+
+        mockMvc.perform(put("/api/admin/users/10/role")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("role", "SITE_ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(10)))
+                .andExpect(jsonPath("$.role", is("SITE_ADMIN")));
+
+        verify(userService).updateUserRole(10L, Role.SITE_ADMIN);
+    }
+
+    @Test
     void testUpdateUserRoleInvalidRole() throws Exception {
         mockMvc.perform(put("/api/admin/users/10/role")
                         .contentType(MediaType.APPLICATION_JSON)

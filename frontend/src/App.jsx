@@ -81,16 +81,20 @@ function parseArrayResponse(data) {
 
 // Helper to guard tabs against unauthorized role access
 function getEffectiveTab(tab, role) {
-  const normRole = (role || '').trim().toUpperCase()
-  if (normRole === 'SITE_WORKER') {
+  const normRole = (role || '').trim().toUpperCase() || 'SITE_WORKER'
+  const isAdmin = normRole === 'ADMIN' || normRole === 'SITE_ADMIN'
+  const isEngineer = normRole === 'SITE_ENGINEER'
+  const isWorker = normRole === 'SITE_WORKER'
+
+  if (isWorker) {
     if (tab !== 'dashboard' && tab !== 'inspections') {
       return 'dashboard'
     }
-  } else if (normRole === 'SITE_ENGINEER') {
+  } else if (isEngineer) {
     if (tab === 'users') {
       return 'dashboard'
     }
-  } else if (normRole !== 'ADMIN' && tab === 'users') {
+  } else if (!isAdmin && tab === 'users') {
     return 'dashboard'
   }
   return tab
@@ -362,7 +366,7 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'users' && user?.role === 'ADMIN' && (
+          {currentTab === 'users' && (user?.role === 'ADMIN' || user?.role === 'SITE_ADMIN') && (
             <UserManagementView
               token={token}
               onRefresh={handleRefresh}

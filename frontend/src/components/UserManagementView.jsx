@@ -18,6 +18,7 @@ function formatDate(dateStr) {
 function getRoleBadge(role) {
   switch (role) {
     case 'ADMIN':
+    case 'SITE_ADMIN':
       return 'bg-purple-50 text-purple-700 border-purple-200'
     case 'SITE_ENGINEER':
       return 'bg-blue-50 text-blue-700 border-blue-200'
@@ -146,6 +147,7 @@ export default function UserManagementView({ token, onRefresh }) {
     const counts = {
       TOTAL: users.length,
       ADMIN: 0,
+      SITE_ADMIN: 0,
       SITE_ENGINEER: 0,
       SITE_WORKER: 0,
       PROJECT_MANAGER: 0,
@@ -204,7 +206,7 @@ export default function UserManagementView({ token, onRefresh }) {
         </div>
         <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-3.5 shadow-2xs">
           <span className="text-[10px] uppercase font-bold text-purple-600 block">Administrators</span>
-          <span className="text-xl font-bold text-purple-900 mt-1 block">{stats.ADMIN}</span>
+          <span className="text-xl font-bold text-purple-900 mt-1 block">{stats.ADMIN + stats.SITE_ADMIN}</span>
         </div>
         <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 shadow-2xs">
           <span className="text-[10px] uppercase font-bold text-blue-600 block">Site Engineers</span>
@@ -257,6 +259,7 @@ export default function UserManagementView({ token, onRefresh }) {
             className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer"
           >
             <option value="ALL">All Roles ({users.length})</option>
+            <option value="SITE_ADMIN">SITE_ADMIN</option>
             <option value="ADMIN">ADMIN</option>
             <option value="SITE_ENGINEER">SITE_ENGINEER</option>
             <option value="SITE_WORKER">SITE_WORKER</option>
@@ -332,6 +335,7 @@ export default function UserManagementView({ token, onRefresh }) {
                           >
                             <option value="SITE_WORKER">SITE_WORKER</option>
                             <option value="SITE_ENGINEER">SITE_ENGINEER</option>
+                            <option value="SITE_ADMIN">SITE_ADMIN</option>
                             <option value="ADMIN">ADMIN</option>
                             <option value="PROJECT_MANAGER">PROJECT_MANAGER</option>
                           </select>

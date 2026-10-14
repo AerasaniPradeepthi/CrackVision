@@ -66,6 +66,25 @@ class AuthControllerTest {
     }
 
     @Test
+    void testRegisterAttemptWithPrivilegedRoleStillAssignsSiteWorker() throws Exception {
+        // Even if client attempts to post role: SITE_ADMIN or ADMIN, response is strictly SITE_WORKER
+        User maliciousInput = new User();
+        maliciousInput.setName("Attacker");
+        maliciousInput.setEmail("attacker@crackvision.com");
+        maliciousInput.setPassword("password123");
+        maliciousInput.setRole(Role.SITE_ADMIN);
+
+        User workerResult = new User(5L, "Attacker", "attacker@crackvision.com", "hash", Role.SITE_WORKER, "2026-01-01");
+        when(userService.createUser(any(User.class))).thenReturn(workerResult);
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(maliciousInput)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("SITE_WORKER"));
+    }
+
+    @Test
     void testRegisterDuplicateEmailReturns409() throws Exception {
         User input = new User();
         input.setName("Alex Rivera");
@@ -137,5 +156,39 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("Invalid email or password"));
+    }
+
+    @Test
+    void testLoginReturnsSiteEngineerRole() throws Exception {
+        LoginRequest request = new LoginRequest();
+        request.setEmail("siteengineer@crackvision.com");
+        request.setPassword("password123");
+
+        LoginResponse response = new LoginResponse("eng.token", 2L, "Site Engineer", "siteengineer@crackvision.com", Role.SITE_ENGINEER);
+        when(userService.login(any(LoginRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("SITE_ENGINEER"))
+                .andExpect(jsonPath("$.email").value("siteengineer@crackvision.com"));
+    }
+
+    @Test
+    void testLoginReturnsSiteAdminRole() throws Exception {
+        LoginRequest request = new LoginRequest();
+        request.setEmail("siteadmin@crackvision.com");
+        request.setPassword("password123");
+
+        LoginResponse response = new LoginResponse("admin.token", 3L, "Site Admin", "siteadmin@crackvision.com", Role.SITE_ADMIN);
+        when(userService.login(any(LoginRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("SITE_ADMIN"))
+                .andExpect(jsonPath("$.email").value("siteadmin@crackvision.com"));
     }
 }

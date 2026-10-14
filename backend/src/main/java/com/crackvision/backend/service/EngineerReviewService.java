@@ -76,9 +76,9 @@ public class EngineerReviewService {
                 .orElseThrow(() -> new RuntimeException("Reviewer user not found for email: " + reviewerEmail));
 
         // Enforce role authorization at business layer
-        if (reviewer.getRole() != Role.SITE_ENGINEER && reviewer.getRole() != Role.ADMIN) {
+        if (reviewer.getRole() != Role.SITE_ENGINEER && reviewer.getRole() != Role.ADMIN && reviewer.getRole() != Role.SITE_ADMIN) {
             throw new AccessDeniedException("User role " + reviewer.getRole()
-                    + " is not authorized to submit engineer reviews. Requires SITE_ENGINEER or ADMIN.");
+                    + " is not authorized to submit engineer reviews. Requires SITE_ENGINEER, ADMIN, or SITE_ADMIN.");
         }
 
         // Create append-only review record

@@ -82,6 +82,17 @@ class UserServiceTest {
     }
 
     @Test
+    void testCreateUserReservedSystemEmailThrows() {
+        User input = new User();
+        input.setEmail("siteadmin@crackvision.com");
+        input.setPassword("somePassword");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> userService.createUser(input));
+        assertTrue(ex.getMessage().contains("reserved system account"));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void testLoginSuccessReturnsActualRole() {
         LoginRequest request = new LoginRequest();
         request.setEmail("testengineer@crackvision.com");
@@ -128,5 +139,36 @@ class UserServiceTest {
         User updated = userService.updateUserRole(1L, Role.ADMIN);
         assertEquals(Role.ADMIN, updated.getRole());
         verify(userRepository).save(sampleUser);
+    }
+
+    @Test
+    void testUpdateUserRoleToSiteAdmin() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(sampleUser));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        User updated = userService.updateUserRole(1L, Role.SITE_ADMIN);
+        assertEquals(Role.SITE_ADMIN, updated.getRole());
+        verify(userRepository).save(sampleUser);
+    }
+
+    @Test
+    void testUpdateUserRoleNullThrows() {
+        assertThrows(IllegalArgumentException.class, () -> userService.updateUserRole(1L, null));
+    }
+
+    @Test
+    void testLoginReturnsSiteAdminRole() {
+        User adminUser = new User(2L, "Site Admin", "siteadmin@crackvision.com", "encodedPw", Role.SITE_ADMIN, "2026-01-01T00:00:00");
+        LoginRequest request = new LoginRequest();
+        request.setEmail("siteadmin@crackvision.com");
+        request.setPassword("adminPw");
+
+        when(userRepository.findByEmail("siteadmin@crackvision.com")).thenReturn(Optional.of(adminUser));
+        when(passwordEncoder.matches("adminPw", "encodedPw")).thenReturn(true);
+        when(jwtService.generateToken(adminUser)).thenReturn("admin.jwt.token");
+
+        LoginResponse response = userService.login(request);
+        assertEquals(Role.SITE_ADMIN, response.getRole());
+        assertEquals("siteadmin@crackvision.com", response.getEmail());
     }
 }

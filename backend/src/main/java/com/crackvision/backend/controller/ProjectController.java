@@ -27,7 +27,7 @@ public class ProjectController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Project> createProject(@RequestBody Project project) {
         Project created = projectService.createProject(project);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
@@ -46,7 +46,7 @@ public class ProjectController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Project> updateProject(@PathVariable Long id, @RequestBody Project project) {
         try {
             Project updated = projectService.updateProject(id, project);
@@ -57,7 +57,7 @@ public class ProjectController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Void> deleteProject(@PathVariable Long id) {
         projectService.deleteProject(id);
         return ResponseEntity.noContent().build();

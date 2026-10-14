@@ -107,6 +107,7 @@ function getSeverityBadge(severity) {
 function getRoleBadge(role) {
   switch (role) {
     case 'ADMIN':
+    case 'SITE_ADMIN':
       return 'bg-purple-50 text-purple-700 border-purple-200'
     case 'SITE_ENGINEER':
       return 'bg-blue-50 text-blue-700 border-blue-200'
@@ -126,6 +127,7 @@ function getDashboardGreeting(role) {
     case 'SITE_ENGINEER':
       return 'Welcome Back, Engineer'
     case 'ADMIN':
+    case 'SITE_ADMIN':
       return 'Welcome Back, Admin'
     case 'PROJECT_MANAGER':
       return 'Welcome Back, Project Manager'
@@ -148,7 +150,9 @@ export default function DashboardOverview({
   onSelectComponentForMonitoring,
   onRefresh,
 }) {
-  const effectiveRole = (userRole || user?.role || '').trim().toUpperCase() || 'SITE_ENGINEER'
+  const rawRole = (userRole || user?.role || '').trim().toUpperCase()
+  const effectiveRole = rawRole || 'SITE_WORKER'
+  const isAdmin = effectiveRole === 'ADMIN' || effectiveRole === 'SITE_ADMIN'
 
   // Direct modal controls inside the dashboard
   const [isNewInspectionModalOpen, setIsNewInspectionModalOpen] = useState(false)
@@ -160,7 +164,7 @@ export default function DashboardOverview({
   // Admin users state
   const [adminUsers, setAdminUsers] = useState([])
   const [adminUsersLoading, setAdminUsersLoading] = useState(
-    () => effectiveRole === 'ADMIN' && Boolean(token)
+    () => isAdmin && Boolean(token)
   )
   const [adminRoleUpdatingId, setAdminRoleUpdatingId] = useState(null)
   const [adminNotice, setAdminNotice] = useState(null)
@@ -173,9 +177,9 @@ export default function DashboardOverview({
     return token ? { Authorization: `Bearer ${token}` } : {}
   }, [token])
 
-  // Fetch admin users when in ADMIN role
+  // Fetch admin users when in ADMIN or SITE_ADMIN role
   useEffect(() => {
-    if (effectiveRole !== 'ADMIN' || !token) return
+    if (!isAdmin || !token) return
     let active = true
 
     fetch('/api/admin/users', { headers: authHeaders() })
@@ -195,7 +199,7 @@ export default function DashboardOverview({
     return () => {
       active = false
     }
-  }, [effectiveRole, token, authHeaders])
+  }, [isAdmin, effectiveRole, token, authHeaders])
 
   // Fetch recent AI analysis results for Engineer and Worker roles
   useEffect(() => {
@@ -1423,7 +1427,7 @@ export default function DashboardOverview({
       {/* ========================================================================= */}
       {/* 3. ADMIN DASHBOARD: ADMIN OPERATIONS CENTER                               */}
       {/* ========================================================================= */}
-      {effectiveRole === 'ADMIN' && (
+      {isAdmin && (
         <div className="space-y-6">
           {/* 1. Admin Hero Banner with Construction Image & Governance Telemetry Card */}
           <div className="relative rounded-2xl overflow-hidden border border-slate-800/40 shadow-lg min-h-[220px] flex flex-col justify-between">
@@ -1630,6 +1634,7 @@ export default function DashboardOverview({
                             >
                               <option value="SITE_WORKER">SITE_WORKER</option>
                               <option value="SITE_ENGINEER">SITE_ENGINEER</option>
+                              <option value="SITE_ADMIN">SITE_ADMIN</option>
                               <option value="ADMIN">ADMIN</option>
                               <option value="PROJECT_MANAGER">PROJECT_MANAGER</option>
                             </select>
@@ -1691,7 +1696,7 @@ export default function DashboardOverview({
       {/* ========================================================================= */}
       {/* 4. DEFAULT / PROJECT_MANAGER DASHBOARD                                    */}
       {/* ========================================================================= */}
-      {effectiveRole !== 'SITE_WORKER' && effectiveRole !== 'SITE_ENGINEER' && effectiveRole !== 'ADMIN' && (
+      {!isAdmin && effectiveRole !== 'SITE_WORKER' && effectiveRole !== 'SITE_ENGINEER' && (
         <div className="space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs">
             <h2 className="text-lg font-bold text-slate-900 tracking-tight">

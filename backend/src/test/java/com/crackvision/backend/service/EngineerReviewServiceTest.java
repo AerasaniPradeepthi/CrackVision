@@ -169,6 +169,34 @@ class EngineerReviewServiceTest {
     }
 
     @Test
+    void testSubmitReview_SiteAdmin_Success() {
+        User siteAdminUser = new User();
+        siteAdminUser.setId(30L);
+        siteAdminUser.setName("Diana SiteAdmin");
+        siteAdminUser.setEmail("diana@crackvision.com");
+        siteAdminUser.setRole(Role.SITE_ADMIN);
+
+        when(inspectionService.getInspectionById(1L)).thenReturn(sampleInspection);
+        when(aiAnalysisResultRepository.findById(20L)).thenReturn(Optional.of(sampleAnalysis));
+        when(userRepository.findByEmail("diana@crackvision.com")).thenReturn(Optional.of(siteAdminUser));
+        when(engineerReviewRepository.save(any(EngineerReview.class))).thenAnswer(invocation -> {
+            EngineerReview r = invocation.getArgument(0);
+            r.setId(502L);
+            return r;
+        });
+
+        EngineerReviewRequest request = new EngineerReviewRequest(
+                ReviewDecision.NO_ACTION_REQUIRED,
+                "Structural component stabilized under supervision."
+        );
+
+        EngineerReview result = engineerReviewService.submitReview(1L, 20L, request, "diana@crackvision.com");
+
+        assertNotNull(result);
+        assertEquals(Role.SITE_ADMIN, result.getReviewer().getRole());
+    }
+
+    @Test
     void testSubmitReview_MismatchedInspectionAndAnalysis_ThrowsIllegalArgumentException() {
         Inspection otherInspection = new Inspection();
         otherInspection.setId(99L);

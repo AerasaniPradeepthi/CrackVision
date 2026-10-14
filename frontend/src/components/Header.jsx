@@ -20,7 +20,7 @@ export default function Header({
           subtitle: 'Review screening findings, analyze longitudinal trends, and certify determinations',
         }
       }
-      if (normRole === 'ADMIN') {
+      if (normRole === 'ADMIN' || normRole === 'SITE_ADMIN') {
         return {
           title: 'System Administration',
           subtitle: 'Manage user authorizations, project structural hierarchies, and system activity',

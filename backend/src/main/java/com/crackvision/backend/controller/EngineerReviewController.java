@@ -33,7 +33,7 @@ public class EngineerReviewController {
      * Reviewer identity is derived securely from the authenticated principal.
      */
     @PostMapping("/{inspectionId}/analysis/{analysisId}/reviews")
-    @PreAuthorize("hasAnyRole('SITE_ENGINEER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SITE_ENGINEER', 'ADMIN', 'SITE_ADMIN')")
     public ResponseEntity<?> submitReview(
             @PathVariable Long inspectionId,
             @PathVariable Long analysisId,

@@ -22,7 +22,7 @@ public class FloorController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Floor> createFloor(@RequestBody Floor floor) {
         Floor created = floorService.createFloor(floor);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
@@ -50,7 +50,7 @@ public class FloorController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Floor> updateFloor(
             @PathVariable Long id,
             @RequestBody Floor floor) {
@@ -62,7 +62,7 @@ public class FloorController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Void> deleteFloor(@PathVariable Long id) {
         floorService.deleteFloor(id);
         return ResponseEntity.noContent().build();

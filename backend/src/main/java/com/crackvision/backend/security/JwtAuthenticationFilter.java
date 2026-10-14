@@ -1,5 +1,6 @@
 package com.crackvision.backend.security;
 
+import com.crackvision.backend.entity.Role;
 import com.crackvision.backend.entity.User;
 import com.crackvision.backend.repository.UserRepository;
 import jakarta.servlet.FilterChain;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -60,10 +62,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 User user = userOptional.get();
 
                 if (jwtService.validateToken(jwt, user.getEmail())) {
-                    List<SimpleGrantedAuthority> authorities = Collections.emptyList();
+                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                     if (user.getRole() != null) {
-                        String roleAuthority = "ROLE_" + user.getRole().name();
-                        authorities = Collections.singletonList(new SimpleGrantedAuthority(roleAuthority));
+                        authorities.add(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+                        if (user.getRole() == Role.SITE_ADMIN) {
+                            authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+                        } else if (user.getRole() == Role.ADMIN) {
+                            authorities.add(new SimpleGrantedAuthority("ROLE_SITE_ADMIN"));
+                        }
                     }
 
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(

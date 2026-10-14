@@ -876,7 +876,7 @@ export default function AiAnalysisModal({
                     )}
                   </div>
 
-                  {(userRole === 'SITE_ENGINEER' || userRole === 'ADMIN') && (
+                  {(userRole === 'SITE_ENGINEER' || userRole === 'ADMIN' || userRole === 'SITE_ADMIN') && (
                     <button
                       type="button"
                       onClick={() => setIsReviewModalOpen(true)}

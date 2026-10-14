@@ -27,7 +27,7 @@ public class BuildingController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Building> createBuilding(@RequestBody Building building) {
         Building created = buildingService.createBuilding(building);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
@@ -54,7 +54,7 @@ public class BuildingController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Building> updateBuilding(@PathVariable Long id, @RequestBody Building building) {
         try {
             Building updated = buildingService.updateBuilding(id, building);
@@ -65,7 +65,7 @@ public class BuildingController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Void> deleteBuilding(@PathVariable Long id) {
         buildingService.deleteBuilding(id);
         return ResponseEntity.noContent().build();

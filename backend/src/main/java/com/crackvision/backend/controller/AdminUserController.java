@@ -23,17 +23,17 @@ public class AdminUserController {
     }
 
     @GetMapping("/test")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN')")
     public String test() {
         return "Admin endpoint accessed successfully";
     }
 
     /**
      * Retrieves all registered users in the system.
-     * Restricted strictly to ADMIN role.
+     * Restricted strictly to ADMIN or SITE_ADMIN role.
      */
     @GetMapping("/users")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN')")
     public ResponseEntity<List<UserResponse>> getAllUsers() {
         List<UserResponse> users = userService.getAllUsers().stream()
                 .map(UserResponse::new)
@@ -43,10 +43,10 @@ public class AdminUserController {
 
     /**
      * Updates an existing user's role.
-     * Restricted strictly to ADMIN role.
+     * Restricted strictly to ADMIN or SITE_ADMIN role.
      */
     @PutMapping("/users/{userId}/role")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN')")
     public ResponseEntity<?> updateUserRole(
             @PathVariable Long userId,
             @RequestBody Map<String, String> request) {

@@ -21,7 +21,7 @@ public class ComponentController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Component> createComponent(
             @RequestBody Component component) {
         Component created = componentService.createComponent(component);
@@ -51,7 +51,7 @@ public class ComponentController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Component> updateComponent(
             @PathVariable Long id,
             @RequestBody Component component) {
@@ -64,7 +64,7 @@ public class ComponentController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'PROJECT_MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SITE_ADMIN', 'PROJECT_MANAGER')")
     public ResponseEntity<Void> deleteComponent(@PathVariable Long id) {
         componentService.deleteComponent(id);
         return ResponseEntity.noContent().build();

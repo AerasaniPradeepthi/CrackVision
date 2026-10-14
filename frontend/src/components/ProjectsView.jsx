@@ -100,7 +100,7 @@ export default function ProjectsView({
   const [modalSubmitting, setModalSubmitting] = useState(false)
   const [modalError, setModalError] = useState(null)
 
-  const isManagerOrAdmin = userRole === 'ADMIN' || userRole === 'PROJECT_MANAGER'
+  const isManagerOrAdmin = userRole === 'ADMIN' || userRole === 'SITE_ADMIN' || userRole === 'PROJECT_MANAGER'
 
   const authHeaders = useCallback(() => {
     return token ? { Authorization: `Bearer ${token}` } : {}

@@ -6,7 +6,8 @@ export default function Sidebar({
   mobileOpen,
   onCloseMobile,
 }) {
-  const role = (user?.role || '').trim().toUpperCase() || 'SITE_ENGINEER'
+  const role = (user?.role || '').trim().toUpperCase() || 'SITE_WORKER'
+  const isAdmin = role === 'ADMIN' || role === 'SITE_ADMIN'
 
   const allItems = {
     dashboard: {
@@ -14,7 +15,7 @@ export default function Sidebar({
       label:
         role === 'SITE_WORKER'
           ? 'Field Operations'
-          : role === 'ADMIN'
+          : isAdmin
           ? 'Admin Overview'
           : 'Dashboard',
       icon: (
@@ -77,7 +78,7 @@ export default function Sidebar({
     navKeys = ['dashboard', 'inspections']
   } else if (role === 'SITE_ENGINEER') {
     navKeys = ['dashboard', 'reviews', 'monitoring', 'inspections', 'projects']
-  } else if (role === 'ADMIN') {
+  } else if (isAdmin) {
     navKeys = ['dashboard', 'users', 'projects', 'inspections', 'monitoring', 'reviews']
   } else if (role === 'PROJECT_MANAGER') {
     navKeys = ['dashboard', 'projects', 'inspections', 'monitoring', 'reviews']
@@ -86,7 +87,7 @@ export default function Sidebar({
   const navItems = navKeys.map((key) => allItems[key]).filter(Boolean)
 
   const portalSubtitle =
-    role === 'ADMIN'
+    isAdmin
       ? 'Admin Portal'
       : role === 'SITE_WORKER'
       ? 'Worker Portal'
