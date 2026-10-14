@@ -28,7 +28,7 @@ services:
       - key: CRACKVISION_UPLOAD_DIR
         value: /app/uploads/inspections
       - key: CRACKVISION_JWT_SECRET
-        sync: false
+        value: ZpctL0ve0H0xN613JwmhftVfilKoYkBCr3g5rwoLIGU=
       - key: CRACKVISION_CORS_ALLOWED_ORIGINS
         value: https://crackvision.vercel.app,http://localhost:3000,http://localhost:5173
       - key: PORT
