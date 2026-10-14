@@ -7,13 +7,16 @@
 FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /build
 
+# Set Maven options to limit memory usage on Render free tier (512MB RAM)
+ENV MAVEN_OPTS="-Xmx400m -Xms64m -XX:MaxMetaspaceSize=128m"
+
 # Cache maven dependencies from backend directory
 COPY backend/pom.xml .
-RUN mvn dependency:go-offline -B
+RUN mvn dependency:go-offline -B --no-transfer-progress
 
 # Copy source and build executable fat JAR
 COPY backend/src ./src
-RUN mvn clean package -DskipTests
+RUN mvn clean package -DskipTests -B --no-transfer-progress
 
 # Runtime Stage
 FROM eclipse-temurin:21-jre-jammy

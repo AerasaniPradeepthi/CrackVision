@@ -30,7 +30,7 @@ services:
       - key: CRACKVISION_JWT_SECRET
         value: ZpctL0ve0H0xN613JwmhftVfilKoYkBCr3g5rwoLIGU=
       - key: CRACKVISION_CORS_ALLOWED_ORIGINS
-        value: https://crackvision.vercel.app,http://localhost:3000,http://localhost:5173
+        value: https://crackvision.vercel.app,https://crackvision-*.vercel.app,http://localhost:3000,http://localhost:5173
       - key: PORT
         value: "10000"
 

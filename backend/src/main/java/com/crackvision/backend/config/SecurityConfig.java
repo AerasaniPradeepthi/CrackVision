@@ -28,7 +28,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @Value("${crackvision.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
+    @Value("${crackvision.cors.allowed-origins:https://crackvision.vercel.app,http://localhost:3000,http://localhost:5173}")
     private String allowedOrigins;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
