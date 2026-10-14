@@ -1,12 +1,26 @@
 import { useState } from 'react'
+import RegisterView from './RegisterView'
 
-export default function LoginView({ onLoginSuccess }) {
+export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
+  const [internalRegister, setInternalRegister] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  if (internalRegister) {
+    return (
+      <RegisterView
+        onLoginSuccess={onLoginSuccess}
+        onSwitchToLogin={(prefillEmail) => {
+          if (prefillEmail) setEmail(prefillEmail)
+          setInternalRegister(false)
+        }}
+      />
+    )
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -192,7 +206,30 @@ export default function LoginView({ onLoginSuccess }) {
 
         {/* Center: Form Container */}
         <div className="my-auto max-w-sm sm:max-w-md w-full mx-auto py-8">
-          <div className="mb-8">
+          {/* Segmented Auth Mode Switcher */}
+          <div className="grid grid-cols-2 p-1 bg-slate-200/70 rounded-xl mb-6">
+            <button
+              type="button"
+              className="py-2 text-xs font-semibold rounded-lg bg-white text-slate-900 shadow-2xs transition-all"
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (onSwitchToRegister) {
+                  onSwitchToRegister()
+                } else {
+                  setInternalRegister(true)
+                }
+              }}
+              className="py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition-all cursor-pointer"
+            >
+              Register
+            </button>
+          </div>
+
+          <div className="mb-6">
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
               Welcome Back
             </h2>
@@ -338,6 +375,24 @@ export default function LoginView({ onLoginSuccess }) {
               </button>
             </div>
           </form>
+
+          {/* Switch to Register */}
+          <div className="mt-6 text-center text-xs text-slate-500">
+            Don&apos;t have an account?{' '}
+            <button
+              type="button"
+              onClick={() => {
+                if (onSwitchToRegister) {
+                  onSwitchToRegister()
+                } else {
+                  setInternalRegister(true)
+                }
+              }}
+              className="font-semibold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
+            >
+              Create an account
+            </button>
+          </div>
         </div>
 
         {/* Bottom Understated Footer */}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import LoginView from './components/LoginView'
+import RegisterView from './components/RegisterView'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import DashboardOverview from './components/DashboardOverview'
@@ -98,6 +99,29 @@ export default function App() {
   const [auth, setAuth] = useState(() => getInitialAuth())
   const token = auth.token
   const user = auth.user
+
+  const [authView, setAuthView] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase()
+      if (hash === '#register' || window.location.search.includes('register')) {
+        return 'register'
+      }
+    }
+    return 'login'
+  })
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.toLowerCase()
+      if (hash === '#register') {
+        setAuthView('register')
+      } else if (hash === '#login') {
+        setAuthView('login')
+      }
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
 
   // Navigation tab: 'dashboard' | 'users' | 'projects' | 'inspections' | 'monitoring' | 'reviews'
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -272,7 +296,26 @@ export default function App() {
 
   // Unauthenticated View
   if (!user || !token) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} />
+    if (authView === 'register') {
+      return (
+        <RegisterView
+          onLoginSuccess={handleLoginSuccess}
+          onSwitchToLogin={() => {
+            window.location.hash = 'login'
+            setAuthView('login')
+          }}
+        />
+      )
+    }
+    return (
+      <LoginView
+        onLoginSuccess={handleLoginSuccess}
+        onSwitchToRegister={() => {
+          window.location.hash = 'register'
+          setAuthView('register')
+        }}
+      />
+    )
   }
 
   // Authenticated Dashboard Layout
