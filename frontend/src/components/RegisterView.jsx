@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function RegisterView({ onLoginSuccess, onSwitchToLogin }) {
   const [name, setName] = useState('')
@@ -9,11 +9,18 @@ export default function RegisterView({ onLoginSuccess, onSwitchToLogin }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [warmingUp, setWarmingUp] = useState(false)
+
+  // Silently wake up Render backend from cold-sleep as soon as user opens page
+  useEffect(() => {
+    fetch('/api/health').catch(() => {})
+  }, [])
 
   const handleRegister = async (e) => {
     e.preventDefault()
     setError(null)
     setSuccess(null)
+    setWarmingUp(false)
 
     if (password !== confirmPassword) {
       setError('Passwords do not match. Please ensure both passwords match.')
@@ -27,78 +34,98 @@ export default function RegisterView({ onLoginSuccess, onSwitchToLogin }) {
 
     setLoading(true)
 
-    try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim(),
-          password: password,
-        }),
-      })
+    const payload = JSON.stringify({
+      name: name.trim(),
+      email: email.trim(),
+      password: password,
+    })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        const errorMsg = data?.error || 'Registration failed. Please check your information.'
-        setError(errorMsg)
-        setLoading(false)
-        return
-      }
-
-      setSuccess('Account created successfully! Signing you in...')
-
-      // Auto-login upon successful registration
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const loginRes = await fetch('/api/auth/login', {
+        if (attempt > 1) {
+          setWarmingUp(true)
+        }
+
+        const response = await fetch('/api/auth/register', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            email: email.trim(),
-            password: password,
-          }),
+          body: payload,
         })
 
-        const loginData = await loginRes.json()
+        const data = await response.json()
 
-        if (loginRes.ok && onLoginSuccess) {
-          sessionStorage.setItem('crackvision_token', loginData.token)
-          sessionStorage.setItem(
-            'crackvision_user',
-            JSON.stringify({
-              id: loginData.id,
-              name: loginData.name,
-              email: loginData.email,
-              role: loginData.role,
-            })
-          )
-          onLoginSuccess(
-            {
-              id: loginData.id,
-              name: loginData.name,
-              email: loginData.email,
-              role: loginData.role,
-            },
-            loginData.token
-          )
+        if (!response.ok) {
+          const errorMsg = data?.error || 'Registration failed. Please check your information.'
+          setError(errorMsg)
+          setLoading(false)
+          setWarmingUp(false)
           return
         }
-      } catch {
-        // If auto-login fails, redirect to login view
-      }
 
-      setLoading(false)
-      if (onSwitchToLogin) {
-        setTimeout(() => onSwitchToLogin(email), 1200)
+        setWarmingUp(false)
+        setSuccess('Account created successfully! Signing you in...')
+
+        // Auto-login upon successful registration
+        try {
+          const loginRes = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: email.trim(),
+              password: password,
+            }),
+          })
+
+          const loginData = await loginRes.json()
+
+          if (loginRes.ok && onLoginSuccess) {
+            sessionStorage.setItem('crackvision_token', loginData.token)
+            sessionStorage.setItem(
+              'crackvision_user',
+              JSON.stringify({
+                id: loginData.id,
+                name: loginData.name,
+                email: loginData.email,
+                role: loginData.role,
+              })
+            )
+            onLoginSuccess(
+              {
+                id: loginData.id,
+                name: loginData.name,
+                email: loginData.email,
+                role: loginData.role,
+              },
+              loginData.token
+            )
+            return
+          }
+        } catch {
+          // Fall back to login view redirect
+        }
+
+        setLoading(false)
+        if (onSwitchToLogin) {
+          setTimeout(() => onSwitchToLogin(email), 1200)
+        }
+        return
+      } catch {
+        if (attempt < maxAttempts) {
+          setWarmingUp(true)
+          await new Promise((res) => setTimeout(res, 4000))
+        } else {
+          setWarmingUp(false)
+          setLoading(false)
+          setError(
+            'The cloud server is still waking up from Render free-tier sleep mode. Please wait a moment and click Register again.'
+          )
+        }
       }
-    } catch {
-      setError('Unable to connect to the backend server. Please verify the backend is running.')
-      setLoading(false)
     }
   }
 
@@ -216,6 +243,19 @@ export default function RegisterView({ onLoginSuccess, onSwitchToLogin }) {
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
               </svg>
               <div className="flex-1 font-medium">{success}</div>
+            </div>
+          )}
+
+          {/* Cloud Server Warming Up Notice */}
+          {warmingUp && (
+            <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-800 flex items-start gap-2.5 animate-pulse">
+              <svg className="animate-spin h-4 w-4 text-amber-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <div className="flex-1 font-medium">
+                Cloud server is waking up from sleep mode (Render free tier). Connecting now, please wait...
+              </div>
             </div>
           )}
 

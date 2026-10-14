@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import RegisterView from './RegisterView'
 
 export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
@@ -9,6 +9,12 @@ export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
   const [rememberMe, setRememberMe] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [warmingUp, setWarmingUp] = useState(false)
+
+  // Pre-warm backend silently on load
+  useEffect(() => {
+    fetch('/api/health').catch(() => {})
+  }, [])
 
   if (internalRegister) {
     return (
@@ -25,67 +31,86 @@ export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError(null)
+    setWarmingUp(false)
     setLoading(true)
 
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email.trim(),
-          password: password,
-        }),
-      })
+    const payload = JSON.stringify({
+      email: email.trim(),
+      password: password,
+    })
 
-      const data = await response.json()
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (attempt > 1) {
+          setWarmingUp(true)
+        }
 
-      if (!response.ok) {
-        const errorMsg = data?.error || 'Invalid email or password. Please try again.'
-        setError(errorMsg)
-        setLoading(false)
-        return
-      }
-
-      // Clear previous credentials to prevent stale role/token collisions
-      localStorage.removeItem('crackvision_token')
-      localStorage.removeItem('crackvision_user')
-      sessionStorage.removeItem('crackvision_token')
-      sessionStorage.removeItem('crackvision_user')
-
-      // Store JWT token and minimum user profile in appropriate storage
-      const storage = rememberMe ? localStorage : sessionStorage
-      storage.setItem('crackvision_token', data.token)
-      storage.setItem(
-        'crackvision_user',
-        JSON.stringify({
-          id: data.id,
-          name: data.name,
-          email: data.email,
-          role: data.role,
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: payload,
         })
-      )
 
-      setPassword('')
-      setLoading(false)
+        const data = await response.json()
 
-      if (onLoginSuccess) {
-        onLoginSuccess(
-          {
+        if (!response.ok) {
+          const errorMsg = data?.error || 'Invalid email or password. Please try again.'
+          setError(errorMsg)
+          setLoading(false)
+          setWarmingUp(false)
+          return
+        }
+
+        setWarmingUp(false)
+        // Clear previous credentials to prevent stale role/token collisions
+        localStorage.removeItem('crackvision_token')
+        localStorage.removeItem('crackvision_user')
+        sessionStorage.removeItem('crackvision_token')
+        sessionStorage.removeItem('crackvision_user')
+
+        // Store JWT token and minimum user profile in appropriate storage
+        const storage = rememberMe ? localStorage : sessionStorage
+        storage.setItem('crackvision_token', data.token)
+        storage.setItem(
+          'crackvision_user',
+          JSON.stringify({
             id: data.id,
             name: data.name,
             email: data.email,
             role: data.role,
-          },
-          data.token
+          })
         )
+
+        setPassword('')
+        setLoading(false)
+
+        if (onLoginSuccess) {
+          onLoginSuccess(
+            {
+              id: data.id,
+              name: data.name,
+              email: data.email,
+              role: data.role,
+            },
+            data.token
+          )
+        }
+        return
+      } catch {
+        if (attempt < maxAttempts) {
+          setWarmingUp(true)
+          await new Promise((res) => setTimeout(res, 4000))
+        } else {
+          setWarmingUp(false)
+          setError(
+            'The cloud server is taking longer than expected to wake up from Render sleep mode. Please wait a moment and try again.'
+          )
+          setLoading(false)
+        }
       }
-    } catch {
-      setError(
-        'Unable to connect to the backend server. Please verify the backend is running on port 5050.'
-      )
-      setLoading(false)
     }
   }
 
@@ -237,6 +262,19 @@ export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
               Sign in to your CrackVision account
             </p>
           </div>
+
+          {/* Cloud Server Warming Up Notice */}
+          {warmingUp && (
+            <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-800 flex items-start gap-2.5 animate-pulse">
+              <svg className="animate-spin h-4 w-4 text-amber-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <div className="flex-1 font-medium">
+                Cloud server is waking up from sleep mode (Render free tier). Connecting now, please wait...
+              </div>
+            </div>
+          )}
 
           {/* Authentication Error Banner */}
           {error && (
