@@ -1,10 +1,5 @@
-﻿import { useState, useEffect, useRef } from 'react'
-
-function fetchWithTimeout(url, options = {}, timeoutMs = 90000) {
-  const controller = new AbortController()
-  const id = setTimeout(() => controller.abort(), timeoutMs)
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id))
-}
+import { useState, useEffect } from 'react'
+import { apiFetch } from '../api/config'
 
 export default function RegisterView({ onLoginSuccess, onSwitchToLogin }) {
   const [name, setName] = useState('')
@@ -14,115 +9,159 @@ export default function RegisterView({ onLoginSuccess, onSwitchToLogin }) {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [canRetry, setCanRetry] = useState(false)
+  const [isExistingAccount, setIsExistingAccount] = useState(false)
   const [success, setSuccess] = useState(null)
   const [warmingUp, setWarmingUp] = useState(false)
-  const [countdown, setCountdown] = useState(0)
-  const [progress, setProgress] = useState(0)
-  const countdownRef = useRef(null)
 
+  // Silently ping backend health on mount to initiate cold-start wake early
   useEffect(() => {
-    fetchWithTimeout('/api/health', {}, 60000).catch(() => {})
+    apiFetch('/api/health', { method: 'GET' }, 30000).catch(() => {})
   }, [])
 
-  const startCountdown = (seconds) => {
-    setCountdown(seconds)
-    setProgress(0)
-    clearInterval(countdownRef.current)
-    const start = Date.now()
-    countdownRef.current = setInterval(() => {
-      const elapsed = (Date.now() - start) / 1000
-      const remaining = Math.max(0, seconds - elapsed)
-      setCountdown(Math.ceil(remaining))
-      setProgress(Math.min(100, (elapsed / seconds) * 100))
-      if (remaining <= 0) clearInterval(countdownRef.current)
-    }, 250)
-  }
-
-  const stopCountdown = () => {
-    clearInterval(countdownRef.current)
-    setCountdown(0)
-    setProgress(100)
-  }
-
-  useEffect(() => () => clearInterval(countdownRef.current), [])
-
   const handleRegister = async (e) => {
-    e.preventDefault()
+    if (e && e.preventDefault) e.preventDefault()
     setError(null)
     setSuccess(null)
+    setCanRetry(false)
+    setIsExistingAccount(false)
     setWarmingUp(false)
-    stopCountdown()
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.')
+    const trimmedName = name.trim()
+    const trimmedEmail = email.trim().toLowerCase()
+
+    if (!trimmedName) {
+      setError('Please enter your full name.')
+      return
+    }
+    if (!trimmedEmail) {
+      setError('Please enter your email address.')
       return
     }
     if (password.length < 6) {
       setError('Password must be at least 6 characters long.')
       return
     }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please verify both password fields.')
+      return
+    }
 
     setLoading(true)
-    const payload = JSON.stringify({ name: name.trim(), email: email.trim(), password })
 
-    const maxAttempts = 3
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Notify user if backend takes more than 3.5s to respond (Render cold start)
+    const slowTimer = setTimeout(() => {
+      setWarmingUp(true)
+    }, 3500)
+
+    try {
+      const response = await apiFetch(
+        '/api/auth/register',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            name: trimmedName,
+            email: trimmedEmail,
+            password: password,
+          }),
+        },
+        60000 // 60s timeout accommodates Render free-tier cold starts
+      )
+
+      clearTimeout(slowTimer)
+      setWarmingUp(false)
+
+      let data = null
       try {
-        if (attempt > 1) {
-          setWarmingUp(true)
-          startCountdown(60)
+        data = await response.json()
+      } catch {
+        // Non-JSON response body
+      }
+
+      if (!response.ok) {
+        setLoading(false)
+        const errorMsg = data?.error || data?.message
+
+        if (response.status === 409 || (errorMsg && errorMsg.includes('already registered'))) {
+          setIsExistingAccount(true)
+          setCanRetry(true)
+          setError(
+            'This email is already registered. If you already created an account, you can Sign In directly.'
+          )
+        } else if (response.status === 400) {
+          setError(errorMsg || 'Invalid registration details. Please verify your information.')
+        } else if (response.status === 502 || response.status === 503 || response.status === 504) {
+          setCanRetry(true)
+          setError(
+            `The cloud server is currently waking up or temporarily unavailable (HTTP ${response.status}). Please wait a few moments and try again.`
+          )
+        } else {
+          setCanRetry(true)
+          setError(errorMsg || `Registration failed (HTTP ${response.status}). Please try again.`)
         }
+        return
+      }
 
-        const response = await fetchWithTimeout(
-          '/api/auth/register',
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload },
-          90000
+      // Registration succeeded
+      setSuccess('Account created successfully! Signing you in...')
+
+      // Attempt immediate auto-login
+      try {
+        const loginRes = await apiFetch(
+          '/api/auth/login',
+          {
+            method: 'POST',
+            body: JSON.stringify({ email: trimmedEmail, password }),
+          },
+          30000
         )
+        const loginData = await loginRes.json()
 
-        stopCountdown()
-        setWarmingUp(false)
-        const data = await response.json()
-
-        if (!response.ok) {
-          setError(data?.error || 'Registration failed. Please check your information.')
-          setLoading(false)
+        if (loginRes.ok && onLoginSuccess) {
+          sessionStorage.setItem('crackvision_token', loginData.token)
+          sessionStorage.setItem(
+            'crackvision_user',
+            JSON.stringify({
+              id: loginData.id,
+              name: loginData.name,
+              email: loginData.email,
+              role: loginData.role,
+            })
+          )
+          onLoginSuccess(
+            {
+              id: loginData.id,
+              name: loginData.name,
+              email: loginData.email,
+              role: loginData.role,
+            },
+            loginData.token
+          )
           return
         }
-
-        setSuccess('Account created! Signing you in...')
-
-        try {
-          const loginRes = await fetchWithTimeout(
-            '/api/auth/login',
-            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), password }) },
-            90000
-          )
-          const loginData = await loginRes.json()
-          if (loginRes.ok && onLoginSuccess) {
-            sessionStorage.setItem('crackvision_token', loginData.token)
-            sessionStorage.setItem('crackvision_user', JSON.stringify({ id: loginData.id, name: loginData.name, email: loginData.email, role: loginData.role }))
-            onLoginSuccess({ id: loginData.id, name: loginData.name, email: loginData.email, role: loginData.role }, loginData.token)
-            return
-          }
-        } catch { /* fall back */ }
-
-        setLoading(false)
-        if (onSwitchToLogin) setTimeout(() => onSwitchToLogin(email), 1200)
-        return
-
       } catch {
-        stopCountdown()
-        setWarmingUp(false)
-        if (attempt < maxAttempts) {
-          setWarmingUp(true)
-          startCountdown(10)
-          await new Promise((res) => setTimeout(res, 10000))
-          stopCountdown()
-          setWarmingUp(false)
-        } else {
-          setLoading(false)
-          setError('The cloud server is taking too long to respond. This happens on first use after inactivity. Please wait 30 seconds and try again.')
-        }
+        // If auto-login fails, redirect to login page
+      }
+
+      setLoading(false)
+      if (onSwitchToLogin) {
+        setTimeout(() => onSwitchToLogin(trimmedEmail), 1200)
+      }
+    } catch (err) {
+      clearTimeout(slowTimer)
+      setWarmingUp(false)
+      setLoading(false)
+      setCanRetry(true)
+
+      if (err.name === 'AbortError') {
+        setIsExistingAccount(true)
+        setError(
+          'Connection timed out after 60 seconds while waiting for the cloud server. NOTE: Your registration may have already succeeded on the server. Try signing in first, or click Retry Registration if you are sure it did not complete.'
+        )
+      } else {
+        setError(
+          'Unable to reach the backend server. The cloud server may still be spinning up from sleep mode, or your network connection was interrupted.'
+        )
       }
     }
   }
@@ -192,31 +231,57 @@ export default function RegisterView({ onLoginSuccess, onSwitchToLogin }) {
             </div>
           )}
 
+          {/* Cloud Server Warming Up Notice */}
           {warmingUp && (
-            <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-4 text-xs text-amber-800">
-              <div className="flex items-start gap-2.5 mb-3">
-                <svg className="animate-spin h-4 w-4 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <div className="flex-1">
-                  <p className="font-semibold text-amber-900">Server waking up…</p>
-                  <p className="mt-0.5 text-amber-700">
-                    The cloud server was asleep (free tier). Connecting now{countdown > 0 ? ` — about ${countdown}s remaining` : '…'}
-                  </p>
-                </div>
+            <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-800 flex items-start gap-2.5 animate-pulse">
+              <svg className="animate-spin h-4 w-4 text-amber-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-semibold text-amber-900">Connecting to cloud server...</p>
+                <p className="mt-0.5 text-amber-700">
+                  Render free-tier servers take 30–50 seconds to wake up from sleep mode. Please keep this tab open while your account is created.
+                </p>
               </div>
-              <div className="w-full bg-amber-200 rounded-full h-1.5 overflow-hidden">
-                <div className="h-1.5 bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
-              </div>
-              <p className="mt-2 text-[11px] text-amber-600">Please keep this tab open — do not click again.</p>
             </div>
           )}
 
+          {/* Registration Error Banner with Actionable Retry */}
           {error && (
-            <div className="mb-6 rounded-lg bg-red-50 border border-red-200 p-3.5 text-xs text-red-700 flex items-start gap-2.5">
-              <svg className="h-4 w-4 text-red-500 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" /></svg>
-              <div className="flex-1"><span className="font-semibold text-red-800">Error: </span>{error}</div>
+            <div className="mb-6 rounded-lg bg-red-50 border border-red-200 p-3.5 text-xs text-red-800 flex flex-col gap-2.5">
+              <div className="flex items-start gap-2.5">
+                <svg className="h-4 w-4 text-red-500 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1 leading-relaxed">
+                  <span className="font-semibold text-red-900 block mb-0.5">Registration Error</span>
+                  {error}
+                </div>
+              </div>
+              {canRetry && (
+                <div className="flex items-center gap-3 pt-2 border-t border-red-200/80">
+                  <button
+                    type="button"
+                    onClick={handleRegister}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-medium text-xs rounded-md shadow-xs transition-colors cursor-pointer"
+                  >
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.75a.75.75 0 00-.75.75v4.482a.75.75 0 001.5 0v-2.146l.462.462a7 7 0 0011.712-3.138.75.75 0 00-1.362-.605zM4.688 8.576a5.5 5.5 0 019.201-2.466l.312.311H11.77a.75.75 0 000 1.5h4.482a.75.75 0 00.75-.75V2.689a.75.75 0 00-1.5 0v2.146l-.462-.462a7 7 0 00-11.712 3.138.75.75 0 001.362.605z" clipRule="evenodd" />
+                    </svg>
+                    Retry Registration
+                  </button>
+                  {isExistingAccount && (
+                    <button
+                      type="button"
+                      onClick={() => onSwitchToLogin && onSwitchToLogin(email)}
+                      className="text-xs font-semibold text-blue-700 hover:text-blue-800 underline cursor-pointer"
+                    >
+                      Try Signing In &rarr;
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

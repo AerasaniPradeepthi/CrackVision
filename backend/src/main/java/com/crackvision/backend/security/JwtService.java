@@ -20,9 +20,6 @@ public class JwtService {
     // 24 hours in milliseconds for development
     private static final long EXPIRATION_TIME_MS = 24 * 60 * 60 * 1000L;
 
-    // Secure 256-bit fallback key configured by default
-    public static final String DEFAULT_JWT_SECRET = "ZpctL0ve0H0xN613JwmhftVfilKoYkBCr3g5rwoLIGU=";
-
     // Secure 256-bit key configured via CRACKVISION_JWT_SECRET environment variable
     @Value("${crackvision.jwt.secret:}")
     private String jwtSecret;
@@ -30,16 +27,23 @@ public class JwtService {
     @PostConstruct
     public void validateJwtSecret() {
         if (jwtSecret == null || jwtSecret.trim().isEmpty()) {
-            this.jwtSecret = DEFAULT_JWT_SECRET;
-            return;
+            throw new IllegalStateException(
+                    "CRACKVISION_JWT_SECRET environment variable is missing or blank. " +
+                    "A secure 256-bit (or longer) base64-encoded secret must be configured in Render environment variables."
+            );
         }
         try {
             byte[] keyBytes = java.util.Base64.getDecoder().decode(jwtSecret.trim());
             if (keyBytes.length < 32) {
-                this.jwtSecret = DEFAULT_JWT_SECRET;
+                throw new IllegalStateException(
+                        "CRACKVISION_JWT_SECRET must provide at least 256 bits (32 bytes) of entropy when base64-decoded. " +
+                        "Current length: " + (keyBytes.length * 8) + " bits."
+                );
             }
         } catch (IllegalArgumentException e) {
-            this.jwtSecret = DEFAULT_JWT_SECRET;
+            throw new IllegalStateException(
+                    "CRACKVISION_JWT_SECRET must be a valid base64-encoded string.", e
+            );
         }
     }
 

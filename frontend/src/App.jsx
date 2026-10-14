@@ -9,6 +9,7 @@ import InspectionsView from './components/InspectionsView'
 import MonitoringView from './components/MonitoringView'
 import ReviewsView from './components/ReviewsView'
 import UserManagementView from './components/UserManagementView'
+import { apiFetch } from './api/config'
 
 function isTokenExpired(token) {
   if (!token) return true
@@ -177,9 +178,9 @@ export default function App() {
 
       // Parallel fetch for core data
       const [projRes, inspRes, compRes] = await Promise.all([
-        fetch('/api/projects', { headers: authHeaders }),
-        fetch('/api/inspections', { headers: authHeaders }),
-        fetch('/api/components', { headers: authHeaders }),
+        apiFetch('/api/projects', { headers: authHeaders }),
+        apiFetch('/api/inspections', { headers: authHeaders }),
+        apiFetch('/api/components', { headers: authHeaders }),
       ])
 
       // Handle token expiration/unauthorized across all core endpoints
@@ -229,14 +230,14 @@ export default function App() {
 
       // Fetch reviews: primary /api/inspections/reviews/all endpoint with fallback
       try {
-        const revRes = await fetch('/api/inspections/reviews/all', { headers: authHeaders })
+        const revRes = await apiFetch('/api/inspections/reviews/all', { headers: authHeaders })
         if (revRes.ok) {
           const revData = await revRes.json()
           setReviews(parseArrayResponse(revData))
         } else if (normInspections.length > 0) {
           const inspectionsToCheck = normInspections.slice(0, 15)
           const reviewFetches = inspectionsToCheck.map((insp) =>
-            fetch(`/api/inspections/${insp.id}/reviews`, { headers: authHeaders })
+            apiFetch(`/api/inspections/${insp.id}/reviews`, { headers: authHeaders })
               .then((res) => (res.ok ? res.json() : []))
               .catch(() => [])
           )

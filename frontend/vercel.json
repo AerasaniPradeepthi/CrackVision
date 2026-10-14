@@ -7,7 +7,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://crackvision-backend.onrender.com/api/:path*"
+      "destination": "https://crackvision-backend-sjgk.onrender.com/api/:path*"
     },
     {
       "source": "/outputs/:path*",
