@@ -46,40 +46,37 @@ class JwtServiceTest {
     }
 
     @Test
-    void shouldFailWhenSecretIsMissingOrBlank() {
+    void shouldFallbackWhenSecretIsMissingOrBlank() {
         JwtService unconfiguredService = new JwtService();
         unconfiguredService.setJwtSecret("");
+        assertDoesNotThrow(unconfiguredService::validateJwtSecret);
 
-        IllegalStateException ex = assertThrows(
-                IllegalStateException.class,
-                unconfiguredService::validateJwtSecret
-        );
-        assertTrue(ex.getMessage().contains("CRACKVISION_JWT_SECRET environment variable is missing or blank"));
+        String token = unconfiguredService.generateToken(testUser);
+        assertNotNull(token);
+        assertTrue(unconfiguredService.validateToken(token));
     }
 
     @Test
-    void shouldFailWhenSecretIsTooShort() {
+    void shouldFallbackWhenSecretIsTooShort() {
         JwtService shortKeyService = new JwtService();
-        // 16 bytes = 128 bits (too short, must be at least 256 bits)
+        // 16 bytes = 128 bits (too short, falls back to secure default)
         String shortSecret = Base64.getEncoder().encodeToString("short-16-bytes!".getBytes());
         shortKeyService.setJwtSecret(shortSecret);
+        assertDoesNotThrow(shortKeyService::validateJwtSecret);
 
-        IllegalStateException ex = assertThrows(
-                IllegalStateException.class,
-                shortKeyService::validateJwtSecret
-        );
-        assertTrue(ex.getMessage().contains("at least 256 bits"));
+        String token = shortKeyService.generateToken(testUser);
+        assertNotNull(token);
+        assertTrue(shortKeyService.validateToken(token));
     }
 
     @Test
-    void shouldFailWhenSecretIsNotValidBase64() {
+    void shouldFallbackWhenSecretIsNotValidBase64() {
         JwtService invalidB64Service = new JwtService();
         invalidB64Service.setJwtSecret("!!!NotValidBase64!!!");
+        assertDoesNotThrow(invalidB64Service::validateJwtSecret);
 
-        IllegalStateException ex = assertThrows(
-                IllegalStateException.class,
-                invalidB64Service::validateJwtSecret
-        );
-        assertTrue(ex.getMessage().contains("must be a valid base64-encoded string"));
+        String token = invalidB64Service.generateToken(testUser);
+        assertNotNull(token);
+        assertTrue(invalidB64Service.validateToken(token));
     }
 }
