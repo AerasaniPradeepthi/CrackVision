@@ -1,5 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import RegisterView from './RegisterView'
+
+function fetchWithTimeout(url, options = {}, timeoutMs = 90000) {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), timeoutMs)
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id))
+}
 
 export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
   const [internalRegister, setInternalRegister] = useState(false)
@@ -10,11 +16,36 @@ export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [warmingUp, setWarmingUp] = useState(false)
+  const [countdown, setCountdown] = useState(0)
+  const [progress, setProgress] = useState(0)
+  const countdownRef = useRef(null)
 
   // Pre-warm backend silently on load
   useEffect(() => {
-    fetch('/api/health').catch(() => {})
+    fetchWithTimeout('/api/health', {}, 60000).catch(() => {})
   }, [])
+
+  const startCountdown = (seconds) => {
+    setCountdown(seconds)
+    setProgress(0)
+    clearInterval(countdownRef.current)
+    const start = Date.now()
+    countdownRef.current = setInterval(() => {
+      const elapsed = (Date.now() - start) / 1000
+      const remaining = Math.max(0, seconds - elapsed)
+      setCountdown(Math.ceil(remaining))
+      setProgress(Math.min(100, (elapsed / seconds) * 100))
+      if (remaining <= 0) clearInterval(countdownRef.current)
+    }, 250)
+  }
+
+  const stopCountdown = () => {
+    clearInterval(countdownRef.current)
+    setCountdown(0)
+    setProgress(100)
+  }
+
+  useEffect(() => () => clearInterval(countdownRef.current), [])
 
   if (internalRegister) {
     return (
@@ -32,82 +63,60 @@ export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
     e.preventDefault()
     setError(null)
     setWarmingUp(false)
+    stopCountdown()
     setLoading(true)
 
-    const payload = JSON.stringify({
-      email: email.trim(),
-      password: password,
-    })
+    const payload = JSON.stringify({ email: email.trim(), password })
 
     const maxAttempts = 3
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         if (attempt > 1) {
           setWarmingUp(true)
+          startCountdown(60)
         }
 
-        const response = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: payload,
-        })
+        const response = await fetchWithTimeout(
+          '/api/auth/login',
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload },
+          90000
+        )
 
+        stopCountdown()
+        setWarmingUp(false)
         const data = await response.json()
 
         if (!response.ok) {
-          const errorMsg = data?.error || 'Invalid email or password. Please try again.'
-          setError(errorMsg)
+          setError(data?.error || 'Invalid email or password. Please try again.')
           setLoading(false)
-          setWarmingUp(false)
           return
         }
 
-        setWarmingUp(false)
-        // Clear previous credentials to prevent stale role/token collisions
         localStorage.removeItem('crackvision_token')
         localStorage.removeItem('crackvision_user')
         sessionStorage.removeItem('crackvision_token')
         sessionStorage.removeItem('crackvision_user')
 
-        // Store JWT token and minimum user profile in appropriate storage
         const storage = rememberMe ? localStorage : sessionStorage
         storage.setItem('crackvision_token', data.token)
-        storage.setItem(
-          'crackvision_user',
-          JSON.stringify({
-            id: data.id,
-            name: data.name,
-            email: data.email,
-            role: data.role,
-          })
-        )
+        storage.setItem('crackvision_user', JSON.stringify({ id: data.id, name: data.name, email: data.email, role: data.role }))
 
         setPassword('')
         setLoading(false)
-
-        if (onLoginSuccess) {
-          onLoginSuccess(
-            {
-              id: data.id,
-              name: data.name,
-              email: data.email,
-              role: data.role,
-            },
-            data.token
-          )
-        }
+        if (onLoginSuccess) onLoginSuccess({ id: data.id, name: data.name, email: data.email, role: data.role }, data.token)
         return
+
       } catch {
+        stopCountdown()
+        setWarmingUp(false)
         if (attempt < maxAttempts) {
           setWarmingUp(true)
-          await new Promise((res) => setTimeout(res, 4000))
-        } else {
+          startCountdown(10)
+          await new Promise((res) => setTimeout(res, 10000))
+          stopCountdown()
           setWarmingUp(false)
-          setError(
-            'The cloud server is taking longer than expected to wake up from Render sleep mode. Please wait a moment and try again.'
-          )
+        } else {
+          setError('The cloud server is taking too long to respond. Please wait 30 seconds and try again.')
           setLoading(false)
         }
       }
@@ -263,16 +272,25 @@ export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
             </p>
           </div>
 
-          {/* Cloud Server Warming Up Notice */}
+          {/* Cold-Start Warm-up Banner with Countdown + Progress Bar */}
           {warmingUp && (
-            <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-800 flex items-start gap-2.5 animate-pulse">
-              <svg className="animate-spin h-4 w-4 text-amber-600 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              <div className="flex-1 font-medium">
-                Cloud server is waking up from sleep mode (Render free tier). Connecting now, please wait...
+            <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-4 text-xs text-amber-800">
+              <div className="flex items-start gap-2.5 mb-3">
+                <svg className="animate-spin h-4 w-4 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <div className="flex-1">
+                  <p className="font-semibold text-amber-900">Server waking up…</p>
+                  <p className="mt-0.5 text-amber-700">
+                    The cloud server was asleep (free tier). Connecting now{countdown > 0 ? ` — about ${countdown}s remaining` : '…'}
+                  </p>
+                </div>
               </div>
+              <div className="w-full bg-amber-200 rounded-full h-1.5 overflow-hidden">
+                <div className="h-1.5 bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="mt-2 text-[11px] text-amber-600">Please keep this tab open — do not click again.</p>
             </div>
           )}
 
@@ -396,7 +414,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    <span>Signing in...</span>
+                    <span>{warmingUp ? 'Server waking up…' : 'Signing in…'}</span>
                   </>
                 ) : (
                   <>
