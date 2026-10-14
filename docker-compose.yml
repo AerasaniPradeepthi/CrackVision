@@ -1,0 +1,106 @@
+services:
+  # -------------------------------------------------------------
+  # 1. AI Computer Vision Microservice (FastAPI + OpenCV)
+  # -------------------------------------------------------------
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: crackvision-ai-service
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ai_outputs:/app/outputs
+    networks:
+      - crackvision-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------
+  # 2. Core Business Backend (Spring Boot 3 + Java 21)
+  # -------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crackvision-backend
+    ports:
+      - "5050:5050"
+    depends_on:
+      ai-service:
+        condition: service_healthy
+    environment:
+      - CRACKVISION_AI_SERVICE_URL=http://ai-service:8000
+      - CRACKVISION_DB_HOST=${CRACKVISION_DB_HOST:-mysql}
+      - CRACKVISION_DB_PORT=${CRACKVISION_DB_PORT:-3306}
+      - CRACKVISION_DB_NAME=${CRACKVISION_DB_NAME:-crackvision}
+      - CRACKVISION_DB_USER=${CRACKVISION_DB_USER:-root}
+      - CRACKVISION_DB_PASSWORD=${CRACKVISION_DB_PASSWORD:-password}
+      - CRACKVISION_DB_URL=${CRACKVISION_DB_URL:-}
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - crackvision-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------
+  # 3. User Interface (React + Vite + Tailwind CSS v4 via Nginx)
+  # -------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: crackvision-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+      - ai-service
+    networks:
+      - crackvision-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------
+  # 4. Optional Local MySQL (For standalone demo without Cloud DB)
+  # Activated with: docker compose --profile local-db up
+  # -------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: crackvision-mysql
+    profiles:
+      - local-db
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_DATABASE=crackvision
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in your .env file}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - crackvision-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  ai_outputs:
+    driver: local
+  backend_uploads:
+    driver: local
+  mysql_data:
+    driver: local
+
+networks:
+  crackvision-net:
+    driver: bridge

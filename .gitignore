@@ -1,0 +1,64 @@
+# Environment & Secrets
+.env
+.env.local
+*.env
+*.pem
+*.key
+
+# Operating System & IDE Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Java & Maven Artifacts
+backend/target/
+backend/.mvn/
+backend/*.log
+backend/uploads/
+uploads/
+
+# Node & Frontend Build Artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+
+# Python & AI Microservice Artifacts
+ai-service/.venv/
+ai-service/venv/
+ai-service/outputs/
+ai-service/__pycache__/
+ai-service/*/__pycache__/
+ai-service/*/*/__pycache__/
+ai-service/.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+
+# Testing & Coverage
+coverage/
+*.lcov
+test-output/
+
+# Additional generated files
+!.env.example
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/target/
+**/dist/
+application-local.properties
+application-local.yml
+*.log

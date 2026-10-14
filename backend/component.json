@@ -1,0 +1,8 @@
+﻿{
+  "name": "Concrete Wall A",
+  "type": "WALL",
+  "description": "Concrete wall for structural crack inspection",
+  "floor": {
+    "id": 1
+  }
+}

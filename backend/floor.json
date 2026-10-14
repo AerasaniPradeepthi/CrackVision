@@ -1,0 +1,7 @@
+﻿{
+  "name": "3rd Floor",
+  "description": "Third floor for structural crack inspection",
+  "building": {
+    "id": 1
+  }
+}
