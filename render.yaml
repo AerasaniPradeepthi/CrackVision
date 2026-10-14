@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: crackvision-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: CRACKVISION_DB_HOST
+        sync: false
+      - key: CRACKVISION_DB_PORT
+        sync: false
+      - key: CRACKVISION_DB_NAME
+        sync: false
+      - key: CRACKVISION_DB_USER
+        sync: false
+      - key: CRACKVISION_DB_PASSWORD
+        sync: false
+      - key: CRACKVISION_DB_URL
+        sync: false
+      - key: CRACKVISION_AI_SERVICE_URL
+        value: https://crackvision-ai.onrender.com
+      - key: CRACKVISION_AI_CONNECT_TIMEOUT_MS
+        value: "5000"
+      - key: CRACKVISION_AI_READ_TIMEOUT_MS
+        value: "30000"
+      - key: CRACKVISION_UPLOAD_DIR
+        value: /app/uploads/inspections
+      - key: CRACKVISION_JWT_SECRET
+        sync: false
+      - key: CRACKVISION_CORS_ALLOWED_ORIGINS
+        value: https://crackvision.vercel.app,http://localhost:3000,http://localhost:5173
+      - key: PORT
+        value: "10000"
+
+  - type: web
+    name: crackvision-ai
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: PYTHONUNBUFFERED
+        value: "1"

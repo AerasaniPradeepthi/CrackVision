@@ -6,6 +6,7 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -19,12 +20,40 @@ public class JwtService {
     // 24 hours in milliseconds for development
     private static final long EXPIRATION_TIME_MS = 24 * 60 * 60 * 1000L;
 
-    // Secure 256-bit key used as default fallback if not configured in environment
-    @Value("${crackvision.jwt.secret:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}")
+    // Secure 256-bit key configured via CRACKVISION_JWT_SECRET environment variable
+    @Value("${crackvision.jwt.secret:}")
     private String jwtSecret;
 
+    @PostConstruct
+    public void validateJwtSecret() {
+        if (jwtSecret == null || jwtSecret.trim().isEmpty()) {
+            throw new IllegalStateException(
+                    "CRACKVISION_JWT_SECRET environment variable is missing or blank. " +
+                    "A secure 256-bit (or longer) base64-encoded secret must be configured in Render environment variables."
+            );
+        }
+        try {
+            byte[] keyBytes = java.util.Base64.getDecoder().decode(jwtSecret.trim());
+            if (keyBytes.length < 32) {
+                throw new IllegalStateException(
+                        "CRACKVISION_JWT_SECRET must provide at least 256 bits (32 bytes) of entropy when base64-decoded. " +
+                        "Current length: " + (keyBytes.length * 8) + " bits."
+                );
+            }
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "CRACKVISION_JWT_SECRET must be a valid base64-encoded string.", e
+            );
+        }
+    }
+
+    public void setJwtSecret(String jwtSecret) {
+        this.jwtSecret = jwtSecret;
+    }
+
     private SecretKey getSigningKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(jwtSecret);
+        validateJwtSecret();
+        byte[] keyBytes = java.util.Base64.getDecoder().decode(jwtSecret.trim());
         return Keys.hmacShaKeyFor(keyBytes);
     }
 

@@ -134,8 +134,9 @@ class AiAnalysisServiceTest {
         assertEquals("SUCCESS", result.getStatus());
         assertNotNull(result.getAnalyzedAt());
 
-        // Crucial requirement: Inspection.status must remain UNCHANGED by automated screening
-        assertEquals("PENDING_AI_ANALYSIS", sampleInspection.getStatus());
+        // Inspection status transitions to PENDING_REVIEW ready for engineer review
+        assertEquals("PENDING_REVIEW", sampleInspection.getStatus());
+        verify(inspectionService, times(1)).updateInspection(eq(1L), any(Inspection.class));
         verify(aiAnalysisResultRepository, times(1)).save(any(AiAnalysisResult.class));
     }
 
@@ -178,7 +179,7 @@ class AiAnalysisServiceTest {
         assertNotNull(secondRun);
         // Both analyses were independently saved to repository
         verify(aiAnalysisResultRepository, times(2)).save(any(AiAnalysisResult.class));
-        assertEquals("PENDING_AI_ANALYSIS", sampleInspection.getStatus());
+        assertEquals("PENDING_REVIEW", sampleInspection.getStatus());
     }
 
     @Test
