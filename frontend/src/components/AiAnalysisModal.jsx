@@ -318,7 +318,11 @@ export default function AiAnalysisModal({
         }
 
         if (res.status === 503 || res.status === 504) {
-          msg = `AI Service Unavailable: ${msg}. Please verify the OpenCV AI service is running on port 8000.`
+          const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          const hint = isLocal
+            ? 'Please verify the OpenCV AI service is running locally on port 8000.'
+            : 'Please verify the AI service is deployed and CRACKVISION_AI_SERVICE_URL is set correctly in Render.'
+          msg = `AI Service Unavailable: ${msg}. ${hint}`
         }
         throw new Error(msg)
       }

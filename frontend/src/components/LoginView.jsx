@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import RegisterView from './RegisterView'
+import BrandLogo, { BuildingLogoIcon } from './BrandLogo'
 import { apiFetch } from '../api/config'
 
 export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
@@ -138,31 +139,7 @@ export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/75 to-slate-900/65" />
 
         {/* Top: CrackVision Brand Treatment */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/30 shrink-0">
-            <svg
-              className="h-6 w-6"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect width="18" height="18" x="3" y="3" rx="2" />
-              <path d="m9 9 3 3-2 3 5 3" />
-              <path d="M15 6v3" />
-            </svg>
-          </div>
-          <div>
-            <span className="text-xl font-bold tracking-tight text-white block leading-tight">
-              CrackVision
-            </span>
-            <span className="text-xs font-medium text-blue-300 block tracking-wide mt-0.5">
-              Structural Crack Detection and Monitoring System
-            </span>
-          </div>
-        </div>
+        <BrandLogo variant="hero" className="relative z-10" />
 
         {/* Bottom Hero Narrative & Three Feature Rows */}
         <div className="relative z-10 space-y-6 max-w-lg mt-auto">
@@ -262,6 +239,17 @@ export default function LoginView({ onLoginSuccess, onSwitchToRegister }) {
           </div>
 
           <div className="mb-6">
+            <div className="lg:hidden flex items-center gap-2.5 mb-4 p-2 rounded-xl bg-slate-100 border border-slate-200/80">
+              <BuildingLogoIcon size={34} />
+              <div className="min-w-0">
+                <span className="text-sm font-bold tracking-tight text-slate-900 block leading-tight">
+                  Crack<span className="text-blue-600">Vision</span>
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium block truncate">
+                  Structural Crack Detection and Monitoring System
+                </span>
+              </div>
+            </div>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
               Welcome Back
             </h2>

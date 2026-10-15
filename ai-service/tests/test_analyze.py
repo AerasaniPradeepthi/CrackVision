@@ -174,3 +174,47 @@ def test_real_crack_image_analysis_if_present(client: TestClient):
     # Ensure no accepted region covers the full image frame (1448 x 1086)
     for reg in data["regions"]:
         assert not (reg["width"] >= 1300 and reg["height"] >= 1000)
+
+
+def test_api_key_authentication(client: TestClient, monkeypatch, clean_wall_bytes: bytes):
+    """
+    Verifies that when CRACKVISION_AI_SERVICE_API_KEY is configured:
+    - Missing/invalid key yields 403 Forbidden
+    - Valid key via X-API-Key yields 200 OK
+    - Valid key via Authorization: Bearer yields 200 OK
+    """
+    import app.main as main_module
+    monkeypatch.setattr(main_module, "AI_SERVICE_API_KEY", "secret-test-key-123")
+
+    # 1. Missing key -> 403
+    res_no_key = client.post(
+        "/analyze",
+        files={"file": ("clean_wall.png", clean_wall_bytes, "image/png")},
+    )
+    assert res_no_key.status_code == 403
+    assert "Invalid or missing AI Service API Key" in res_no_key.json()["detail"]
+
+    # 2. Invalid key -> 403
+    res_bad_key = client.post(
+        "/analyze",
+        files={"file": ("clean_wall.png", clean_wall_bytes, "image/png")},
+        headers={"X-API-Key": "wrong-key"},
+    )
+    assert res_bad_key.status_code == 403
+
+    # 3. Valid key via X-API-Key -> 200
+    res_x_api_key = client.post(
+        "/analyze",
+        files={"file": ("clean_wall.png", clean_wall_bytes, "image/png")},
+        headers={"X-API-Key": "secret-test-key-123"},
+    )
+    assert res_x_api_key.status_code == 200
+
+    # 4. Valid key via Bearer token -> 200
+    res_bearer = client.post(
+        "/analyze",
+        files={"file": ("clean_wall.png", clean_wall_bytes, "image/png")},
+        headers={"Authorization": "Bearer secret-test-key-123"},
+    )
+    assert res_bearer.status_code == 200
+

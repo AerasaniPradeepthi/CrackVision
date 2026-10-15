@@ -20,7 +20,7 @@ services:
       - key: CRACKVISION_DB_URL
         sync: false
       - key: CRACKVISION_AI_SERVICE_URL
-        value: https://crackvision-ai.onrender.com
+        value: http://crackvision-ai:10000
       - key: CRACKVISION_AI_CONNECT_TIMEOUT_MS
         value: "5000"
       - key: CRACKVISION_AI_READ_TIMEOUT_MS

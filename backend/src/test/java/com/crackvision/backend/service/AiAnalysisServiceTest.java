@@ -311,4 +311,77 @@ class AiAnalysisServiceTest {
         assertEquals("https://res.cloudinary.com/dudhz46j/image/upload/v1/inspections/overlays/overlay_test.png", result.getHighlightedImageUrl());
         verify(mockCloudinary, times(1)).uploadBytes(any(), contains("overlay_"), eq("inspections/overlays"));
     }
+
+    @Test
+    void testAnalyzeImage_AiServiceForbidden_StreamlitDetected_ProvidesClearDiagnostic() {
+        when(inspectionService.getInspectionById(1L)).thenReturn(sampleInspection);
+        when(inspectionImageService.getImageMetadata(1L, 1L)).thenReturn(sampleImage);
+        when(inspectionImageService.loadResource(sampleImage)).thenReturn(sampleResource);
+
+        mockServer.expect(requestTo("http://127.0.0.1:8000/analyze"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.FORBIDDEN)
+                        .body("<!DOCTYPE html><html><title>Streamlit App</title></html>")
+                        .contentType(MediaType.TEXT_HTML));
+
+        AiServiceException ex = assertThrows(AiServiceException.class, () ->
+                aiAnalysisService.analyzeImage(1L, 1L)
+        );
+
+        assertNotNull(ex);
+        assertTrue(ex.getMessage().contains("Streamlit"), "Expected error message to mention Streamlit conflict");
+        assertTrue(ex.getMessage().contains("CRACKVISION_AI_SERVICE_URL"), "Expected error message to point to CRACKVISION_AI_SERVICE_URL");
+
+        ArgumentCaptor<AiAnalysisResult> captor = ArgumentCaptor.forClass(AiAnalysisResult.class);
+        verify(aiAnalysisResultRepository).save(captor.capture());
+        assertEquals("FAILED", captor.getValue().getStatus());
+        assertTrue(captor.getValue().getErrorMessage().contains("Streamlit"));
+    }
+
+    @Test
+    void testAnalyzeImage_WithApiKey_SendsHeaders() throws Exception {
+        AiAnalysisService serviceWithKey = new AiAnalysisService(
+                inspectionService,
+                inspectionImageService,
+                aiAnalysisResultRepository,
+                null,
+                restClientBuilder.build(),
+                "http://127.0.0.1:8000",
+                "my-secret-api-key"
+        );
+
+        when(inspectionService.getInspectionById(1L)).thenReturn(sampleInspection);
+        when(inspectionImageService.getImageMetadata(1L, 1L)).thenReturn(sampleImage);
+        when(inspectionImageService.loadResource(sampleImage)).thenReturn(sampleResource);
+
+        PythonAnalysisResponse pythonResponse = new PythonAnalysisResponse();
+        pythonResponse.setStatus("SUCCESS");
+        pythonResponse.setCrackDetected(false);
+        pythonResponse.setScreeningCategory("NORMAL");
+
+        mockServer.expect(requestTo("http://127.0.0.1:8000/analyze"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-API-Key", "my-secret-api-key"))
+                .andExpect(header("Authorization", "Bearer my-secret-api-key"))
+                .andRespond(withSuccess(objectMapper.writeValueAsString(pythonResponse), MediaType.APPLICATION_JSON));
+
+        when(aiAnalysisResultRepository.save(any(AiAnalysisResult.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AiAnalysisResult result = serviceWithKey.analyzeImage(1L, 1L);
+        assertNotNull(result);
+        mockServer.verify();
+    }
+
+    @Test
+    void testCheckAiServiceHealth_ReturnsHealthStatus() {
+        mockServer.expect(requestTo("http://127.0.0.1:8000/health"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"status\":\"HEALTHY\"}", MediaType.APPLICATION_JSON));
+
+        java.util.Map<String, Object> health = aiAnalysisService.checkAiServiceHealth();
+        assertNotNull(health);
+        assertEquals("UP", health.get("status"));
+        assertEquals("HEALTHY", health.get("serviceStatus"));
+        mockServer.verify();
+    }
 }

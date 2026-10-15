@@ -1,3 +1,5 @@
+import BrandLogo from './BrandLogo'
+
 export default function Sidebar({
   activeTab,
   onSelectTab,
@@ -118,34 +120,7 @@ export default function Sidebar({
         <div className="flex flex-col flex-1 overflow-y-auto">
           {/* Brand Header */}
           <div className="h-16 px-5 flex items-center justify-between border-b border-slate-800/80">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/30">
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect width="18" height="18" x="3" y="3" rx="2" />
-                  <path d="m9 9 3 3-2 3 5 3" />
-                  <path d="M15 6v3" />
-                </svg>
-              </div>
-              <div className="min-w-0">
-                <span className="text-base font-bold tracking-tight text-white block leading-tight">
-                  CrackVision
-                </span>
-                <span className="text-[10px] font-medium tracking-tight text-slate-400 block truncate">
-                  Structural Monitoring
-                </span>
-                <span className="text-[9px] font-mono text-blue-400 block uppercase">
-                  {portalSubtitle}
-                </span>
-              </div>
-            </div>
+            <BrandLogo variant="sidebar" subtitle={portalSubtitle} />
 
             {/* Mobile close button */}
             <button

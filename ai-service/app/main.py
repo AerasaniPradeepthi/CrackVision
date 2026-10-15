@@ -1,5 +1,7 @@
+import os
 from datetime import datetime, timezone
-from fastapi import FastAPI, File, UploadFile, status
+from typing import Optional
+from fastapi import FastAPI, File, UploadFile, status, Header, HTTPException, Depends
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -21,6 +23,29 @@ from app.utils.image_utils import (
     save_highlighted_image,
     get_safe_output_path,
 )
+
+# Optional inter-service authentication
+AI_SERVICE_API_KEY = os.environ.get("CRACKVISION_AI_SERVICE_API_KEY", "").strip()
+
+def verify_api_key(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    if not AI_SERVICE_API_KEY:
+        return True
+
+    if x_api_key and x_api_key == AI_SERVICE_API_KEY:
+        return True
+
+    if authorization:
+        parts = authorization.split(" ")
+        if len(parts) == 2 and parts[0].lower() == "bearer" and parts[1] == AI_SERVICE_API_KEY:
+            return True
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Invalid or missing AI Service API Key",
+    )
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -63,6 +88,7 @@ async def health_check():
     "/analyze",
     response_model=AnalysisResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(verify_api_key)],
     summary="Analyze Structural Image for Cracks",
     description="Accepts an image upload and performs automated preliminary visual crack screening.",
 )
@@ -106,6 +132,7 @@ async def analyze_image(file: UploadFile = File(...)):
 
 @app.get(
     "/outputs/{filename}",
+    dependencies=[Depends(verify_api_key)],
     summary="Retrieve Generated Highlighted Image",
     description="Returns the highlighted image generated during analysis with path traversal protection.",
 )

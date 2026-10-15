@@ -126,4 +126,14 @@ public class AiAnalysisController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
         }
     }
+
+    /**
+     * Diagnostic endpoint to check configured AI microservice connectivity and health.
+     */
+    @GetMapping("/ai/health")
+    public ResponseEntity<?> getAiServiceHealth() {
+        Map<String, Object> health = aiAnalysisService.checkAiServiceHealth();
+        HttpStatus status = "UP".equals(health.get("status")) ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
+        return ResponseEntity.status(status).body(health);
+    }
 }

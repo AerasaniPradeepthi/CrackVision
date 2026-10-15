@@ -24,8 +24,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.net.URI;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -38,6 +41,8 @@ public class AiAnalysisService {
     private final AiAnalysisResultRepository aiAnalysisResultRepository;
     private final RestClient restClient;
     private final CloudinaryService cloudinaryService;
+    private final String aiServiceUrl;
+    private final String apiKey;
 
     @Value("${crackvision.ai-service.read-timeout-ms:30000}")
     private int readTimeoutMs;
@@ -49,12 +54,15 @@ public class AiAnalysisService {
             AiAnalysisResultRepository aiAnalysisResultRepository,
             @Autowired(required = false) CloudinaryService cloudinaryService,
             @Value("${crackvision.ai-service.url:http://127.0.0.1:8000}") String aiServiceUrl,
+            @Value("${crackvision.ai-service.api-key:}") String apiKey,
             @Value("${crackvision.ai-service.connect-timeout-ms:5000}") int connectTimeoutMs,
             @Value("${crackvision.ai-service.read-timeout-ms:30000}") int readTimeoutMs) {
         this.inspectionService = inspectionService;
         this.inspectionImageService = inspectionImageService;
         this.aiAnalysisResultRepository = aiAnalysisResultRepository;
         this.cloudinaryService = cloudinaryService;
+        this.aiServiceUrl = aiServiceUrl;
+        this.apiKey = apiKey != null ? apiKey.trim() : "";
         this.readTimeoutMs = readTimeoutMs;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -73,7 +81,7 @@ public class AiAnalysisService {
             InspectionImageService inspectionImageService,
             AiAnalysisResultRepository aiAnalysisResultRepository,
             RestClient restClient) {
-        this(inspectionService, inspectionImageService, aiAnalysisResultRepository, null, restClient);
+        this(inspectionService, inspectionImageService, aiAnalysisResultRepository, null, restClient, "http://127.0.0.1:8000", "");
     }
 
     // Constructor for testing with mock RestClient and CloudinaryService
@@ -83,11 +91,24 @@ public class AiAnalysisService {
             AiAnalysisResultRepository aiAnalysisResultRepository,
             CloudinaryService cloudinaryService,
             RestClient restClient) {
+        this(inspectionService, inspectionImageService, aiAnalysisResultRepository, cloudinaryService, restClient, "http://127.0.0.1:8000", "");
+    }
+
+    public AiAnalysisService(
+            InspectionService inspectionService,
+            InspectionImageService inspectionImageService,
+            AiAnalysisResultRepository aiAnalysisResultRepository,
+            CloudinaryService cloudinaryService,
+            RestClient restClient,
+            String aiServiceUrl,
+            String apiKey) {
         this.inspectionService = inspectionService;
         this.inspectionImageService = inspectionImageService;
         this.aiAnalysisResultRepository = aiAnalysisResultRepository;
         this.cloudinaryService = cloudinaryService;
         this.restClient = restClient;
+        this.aiServiceUrl = aiServiceUrl != null ? aiServiceUrl : "http://127.0.0.1:8000";
+        this.apiKey = apiKey != null ? apiKey.trim() : "";
         this.readTimeoutMs = 30000;
     }
 
@@ -124,9 +145,14 @@ public class AiAnalysisService {
         // 4. Dispatch request to Python FastAPI microservice
         PythonAnalysisResponse pythonResponse;
         try {
-            pythonResponse = restClient.post()
+            var requestSpec = restClient.post()
                     .uri("/analyze")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .contentType(MediaType.MULTIPART_FORM_DATA);
+            if (apiKey != null && !apiKey.isBlank()) {
+                requestSpec.header("X-API-Key", apiKey);
+                requestSpec.header("Authorization", "Bearer " + apiKey);
+            }
+            pythonResponse = requestSpec
                     .body(body)
                     .retrieve()
                     .body(PythonAnalysisResponse.class);
@@ -140,7 +166,25 @@ public class AiAnalysisService {
             recordFailedAnalysis(inspection, image, errorMsg);
             throw new AiServiceException(errorMsg, e, isTimeout);
         } catch (RestClientResponseException e) {
-            String errorMsg = "AI service returned HTTP " + e.getStatusCode();
+            int statusCode = e.getStatusCode().value();
+            String responseBody = "";
+            try {
+                responseBody = e.getResponseBodyAsString();
+            } catch (Exception ignored) {}
+
+            String errorMsg;
+            if (statusCode == 403) {
+                if (responseBody != null && (responseBody.toLowerCase().contains("streamlit") || responseBody.toLowerCase().contains("<!doctype html>"))) {
+                    errorMsg = "AI service returned HTTP 403 FORBIDDEN. The configured AI URL (" + sanitizeUrl(aiServiceUrl) + ") points to an external web application (Streamlit). Please configure CRACKVISION_AI_SERVICE_URL to the valid FastAPI microservice endpoint.";
+                } else {
+                    errorMsg = "AI service returned HTTP 403 FORBIDDEN. Please verify CRACKVISION_AI_SERVICE_URL and optional CRACKVISION_AI_SERVICE_API_KEY.";
+                }
+            } else if (statusCode == 404) {
+                errorMsg = "AI service returned HTTP 404. Endpoint /analyze not found on " + sanitizeUrl(aiServiceUrl);
+            } else {
+                errorMsg = "AI service returned HTTP " + e.getStatusCode();
+            }
+            log.error("AI service analysis failed: {} | response preview: {}", errorMsg, responseBody != null && responseBody.length() > 200 ? responseBody.substring(0, 200) : responseBody);
             recordFailedAnalysis(inspection, image, errorMsg);
             throw new AiServiceException(errorMsg, e, false);
         } catch (Exception e) {
@@ -176,8 +220,12 @@ public class AiAnalysisService {
         if (finalHighlightedUrl != null && !finalHighlightedUrl.isBlank() && cloudinaryService != null && cloudinaryService.isConfigured()) {
             try {
                 String overlayPath = finalHighlightedUrl.startsWith("/") ? finalHighlightedUrl : "/" + finalHighlightedUrl;
-                byte[] overlayBytes = restClient.get()
-                        .uri(overlayPath)
+                var overlaySpec = restClient.get().uri(overlayPath);
+                if (apiKey != null && !apiKey.isBlank()) {
+                    overlaySpec.header("X-API-Key", apiKey);
+                    overlaySpec.header("Authorization", "Bearer " + apiKey);
+                }
+                byte[] overlayBytes = overlaySpec
                         .retrieve()
                         .body(byte[].class);
 
@@ -265,5 +313,59 @@ public class AiAnalysisService {
     public Optional<AiAnalysisResult> getLatestAnalysisForInspection(Long inspectionId) {
         inspectionService.getInspectionById(inspectionId);
         return aiAnalysisResultRepository.findLatestByInspectionId(inspectionId);
+    }
+
+    /**
+     * Probes the AI microservice /health endpoint and returns diagnostic information.
+     */
+    public Map<String, Object> checkAiServiceHealth() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("configuredUrl", sanitizeUrl(aiServiceUrl));
+        try {
+            var spec = restClient.get().uri("/health");
+            if (apiKey != null && !apiKey.isBlank()) {
+                spec.header("X-API-Key", apiKey);
+                spec.header("Authorization", "Bearer " + apiKey);
+            }
+            String body = spec.retrieve().body(String.class);
+            result.put("status", "UP");
+            result.put("serviceStatus", "HEALTHY");
+            result.put("details", body);
+            return result;
+        } catch (ResourceAccessException e) {
+            boolean isTimeout = e.getCause() instanceof SocketTimeoutException
+                    || (e.getMessage() != null && e.getMessage().toLowerCase().contains("timeout"));
+            result.put("status", "DOWN");
+            result.put("error", isTimeout ? "Connection timed out" : "Connection refused or unreachable");
+            return result;
+        } catch (RestClientResponseException e) {
+            result.put("status", "DOWN");
+            result.put("httpStatus", e.getStatusCode().value());
+            String responseBody = "";
+            try {
+                responseBody = e.getResponseBodyAsString();
+            } catch (Exception ignored) {}
+            if (e.getStatusCode().value() == 403 && (responseBody.toLowerCase().contains("streamlit") || responseBody.toLowerCase().contains("<!doctype html>"))) {
+                result.put("error", "HTTP 403: Endpoint points to external Streamlit app instead of CrackVision FastAPI service.");
+            } else {
+                result.put("error", "HTTP " + e.getStatusCode());
+            }
+            return result;
+        } catch (Exception e) {
+            result.put("status", "DOWN");
+            result.put("error", e.getMessage());
+            return result;
+        }
+    }
+
+    private String sanitizeUrl(String url) {
+        if (url == null || url.isBlank()) return "unconfigured";
+        try {
+            URI uri = URI.create(url);
+            if (uri.getUserInfo() != null) {
+                return uri.getScheme() + "://" + uri.getHost() + (uri.getPort() > 0 ? ":" + uri.getPort() : "") + uri.getPath();
+            }
+        } catch (Exception ignored) {}
+        return url;
     }
 }

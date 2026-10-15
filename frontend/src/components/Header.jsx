@@ -1,3 +1,5 @@
+import { BuildingLogoIcon } from './BrandLogo'
+
 export default function Header({
   activeTab,
   user,
@@ -74,6 +76,8 @@ export default function Header({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
+
+        <BuildingLogoIcon size={32} className="lg:hidden" />
 
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
