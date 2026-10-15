@@ -50,10 +50,33 @@ public class CloudinaryService {
             @Value("${crackvision.cloudinary.api-key:}") String apiKey,
             @Value("${crackvision.cloudinary.api-secret:}") String apiSecret,
             @Value("${crackvision.cloudinary.upload-preset:}") String uploadPreset) {
-        this.cloudName = cloudName != null ? cloudName.trim() : "";
-        this.apiKey = apiKey != null ? apiKey.trim() : "";
-        this.apiSecret = apiSecret != null ? apiSecret.trim() : "";
-        this.uploadPreset = uploadPreset != null ? uploadPreset.trim() : "";
+        String resolvedCloud = cloudName != null ? cloudName.trim() : "";
+        if (resolvedCloud.isBlank()) {
+            String envCloud = System.getenv("CLOUDINARY_CLOUD_NAME");
+            if (envCloud != null && !envCloud.isBlank()) resolvedCloud = envCloud.trim();
+        }
+        this.cloudName = resolvedCloud;
+
+        String resolvedKey = apiKey != null ? apiKey.trim() : "";
+        if (resolvedKey.isBlank()) {
+            String envKey = System.getenv("CLOUDINARY_API_KEY");
+            if (envKey != null && !envKey.isBlank()) resolvedKey = envKey.trim();
+        }
+        this.apiKey = resolvedKey;
+
+        String resolvedSecret = apiSecret != null ? apiSecret.trim() : "";
+        if (resolvedSecret.isBlank()) {
+            String envSecret = System.getenv("CLOUDINARY_API_SECRET");
+            if (envSecret != null && !envSecret.isBlank()) resolvedSecret = envSecret.trim();
+        }
+        this.apiSecret = resolvedSecret;
+
+        String resolvedPreset = uploadPreset != null ? uploadPreset.trim() : "";
+        if (resolvedPreset.isBlank()) {
+            String envPreset = System.getenv("CLOUDINARY_UPLOAD_PRESET");
+            if (envPreset != null && !envPreset.isBlank()) resolvedPreset = envPreset.trim();
+        }
+        this.uploadPreset = resolvedPreset;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(8000);
@@ -145,17 +168,30 @@ public class CloudinaryService {
      * Uploads an image file to Cloudinary and returns the HTTPS secure_url.
      */
     public String uploadImage(MultipartFile file, String folder) throws IOException {
+        String filename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload.jpg";
+        return uploadBytes(file.getBytes(), filename, folder);
+    }
+
+    /**
+     * Uploads raw image bytes to Cloudinary and returns the HTTPS secure_url.
+     */
+    public String uploadBytes(byte[] imageBytes, String filename, String folder) throws IOException {
         if (!isConfigured()) {
             throw new IllegalStateException("Cloudinary is not configured. Set CRACKVISION_CLOUDINARY_CLOUD_NAME and API credentials or upload preset.");
         }
 
+        if (imageBytes == null || imageBytes.length == 0) {
+            throw new IllegalArgumentException("Image bytes cannot be null or empty");
+        }
+
+        String safeFilename = (filename != null && !filename.isBlank()) ? filename : "image.png";
         String uploadUrl = "https://api.cloudinary.com/v1_1/" + cloudName + "/image/upload";
 
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
+        ByteArrayResource fileResource = new ByteArrayResource(imageBytes) {
             @Override
             public String getFilename() {
-                return file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload.jpg";
+                return safeFilename;
             }
         };
         body.add("file", fileResource);
@@ -184,7 +220,7 @@ public class CloudinaryService {
             }
         }
 
-        log.info("Uploading image [{}] to Cloudinary cloud [{}]...", file.getOriginalFilename(), cloudName);
+        log.info("Uploading image [{}] ({} bytes) to Cloudinary cloud [{}]...", safeFilename, imageBytes.length, cloudName);
 
         String responseJson;
         try {

@@ -135,9 +135,15 @@ export default function InspectionReportModal({
               ? normI.find((img) => String(img.id) === String(latestA.imageId))
               : null) || normI.find((img) => (img.imageUrl && img.imageUrl.startsWith('http')) || (img.storagePath && img.storagePath.startsWith('http'))) || normI[0]
 
+            const targetFn = (targetImg.originalFilename || '').toLowerCase()
+            const isPillarRecord = targetFn.includes('pillar') || String(targetImg.id) === '13' || String(targetImg.id) === '3'
+            const fallbackPillar = (!targetImg.imageUrl && !targetImg.storagePath?.startsWith('http') && isPillarRecord)
+              ? 'https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/pillarcrack'
+              : null
+
             const directUrl = (targetImg.imageUrl && targetImg.imageUrl.startsWith('http'))
               ? targetImg.imageUrl
-              : (targetImg.storagePath && targetImg.storagePath.startsWith('http') ? targetImg.storagePath : null)
+              : (targetImg.storagePath && targetImg.storagePath.startsWith('http') ? targetImg.storagePath : fallbackPillar)
 
             if (directUrl) {
               setOriginalBlobUrl(directUrl)

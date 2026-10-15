@@ -11,7 +11,7 @@
     },
     {
       "source": "/outputs/:path*",
-      "destination": "https://crackvision-ai.onrender.com/outputs/:path*"
+      "destination": "https://crackvision-backend-sjgk.onrender.com/outputs/:path*"
     },
     {
       "source": "/(.*)",

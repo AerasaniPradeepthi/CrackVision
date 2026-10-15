@@ -413,7 +413,12 @@ export default function AiAnalysisModal({
   const directImageUrl = (selectedImageMeta?.imageUrl && selectedImageMeta.imageUrl.startsWith('http'))
     ? selectedImageMeta.imageUrl
     : (selectedImageMeta?.storagePath?.startsWith('http') ? selectedImageMeta.storagePath : null)
-  const effectiveOriginalUrl = directImageUrl || originalBlobUrl
+  const selectedFn = (selectedImageMeta?.originalFilename || '').toLowerCase()
+  const isPillarRecord = selectedFn.includes('pillar') || String(selectedImageId) === '13' || String(selectedImageId) === '3'
+  const fallbackPillarUrl = (!directImageUrl && isPillarRecord)
+    ? 'https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/pillarcrack'
+    : null
+  const effectiveOriginalUrl = directImageUrl || fallbackPillarUrl || originalBlobUrl
   const isImageUnavailable = Boolean(failedImages[selectedImageId])
   const highlightedUrl = analysis ? formatHighlightedImageUrl(analysis.highlightedImageUrl) : null
 
@@ -567,9 +572,10 @@ export default function AiAnalysisModal({
                         <div className="flex items-center gap-2 min-w-0">
                           {(() => {
                             const isDirectHttp = (img.imageUrl && img.imageUrl.startsWith('http')) || (img.storagePath && img.storagePath.startsWith('http'))
+                            const isPillar = (img.originalFilename || '').toLowerCase().includes('pillar') || String(img.id) === '13' || String(img.id) === '3'
                             const thumbUrl = isDirectHttp
                               ? (img.imageUrl || img.storagePath)
-                              : (isSelected && originalBlobUrl ? originalBlobUrl : null)
+                              : (isPillar ? 'https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/pillarcrack' : (isSelected && originalBlobUrl ? originalBlobUrl : null))
                             const isBroken = failedThumbnails[img.id]
 
                             if (thumbUrl && !isBroken) {
@@ -780,7 +786,15 @@ export default function AiAnalysisModal({
                       {overlayError ? (
                         <div className="flex flex-col items-center justify-center h-full min-h-[180px] max-h-[320px] w-full rounded-lg bg-slate-900 p-4 text-center text-slate-400">
                           <span className="text-xs font-semibold">AI overlay unavailable</span>
-                          <span className="text-[10px] text-slate-500 mt-1">Detection overlay not found</span>
+                          <span className="text-[10px] text-slate-500 mt-1">Detection overlay expired in ephemeral storage</span>
+                          <button
+                            type="button"
+                            onClick={handleRunAnalysis}
+                            disabled={runningAnalysis}
+                            className="mt-2 inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            {runningAnalysis ? 'Screening...' : 'Regenerate Overlay'}
+                          </button>
                         </div>
                       ) : (
                         <img
@@ -809,7 +823,32 @@ export default function AiAnalysisModal({
                           </svg>
                         </div>
                         <span className="font-semibold text-slate-700 text-sm">AI Detection Overlay Unavailable</span>
-                        <span className="text-slate-500 max-w-xs">Detection overlay not found for this photo.</span>
+                        <span className="text-slate-500 max-w-xs">
+                          The detection overlay was stored in ephemeral container storage and has expired. You can regenerate the visual overlay by running the AI screening again.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleRunAnalysis}
+                          disabled={runningAnalysis}
+                          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {runningAnalysis ? (
+                            <>
+                              <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              <span>Screening Image...</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.75a.75.75 0 00-.75.75v4.482a.75.75 0 001.5 0v-2.122l.443.443a7 7 0 0011.776-3.143.75.75 0 00-1.407-.565zM4.688 8.576a5.5 5.5 0 019.201-2.466l.312.311H11.77a.75.75 0 000 1.5h4.482a.75.75 0 00.75-.75V2.689a.75.75 0 00-1.5 0v2.122l-.443-.443A7 7 0 003.283 7.51a.75.75 0 001.405.565z" clipRule="evenodd" />
+                              </svg>
+                              <span>Regenerate AI Screening</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>

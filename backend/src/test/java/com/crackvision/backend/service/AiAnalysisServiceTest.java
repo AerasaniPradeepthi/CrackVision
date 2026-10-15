@@ -265,4 +265,50 @@ class AiAnalysisServiceTest {
         assertEquals(2, history.size());
         assertEquals(2L, history.get(0).getId());
     }
+
+    @Test
+    void testAnalyzeImage_WithCloudinaryConfigured_PersistsOverlayToCloudinary() throws Exception {
+        CloudinaryService mockCloudinary = mock(CloudinaryService.class);
+        when(mockCloudinary.isConfigured()).thenReturn(true);
+        when(mockCloudinary.uploadBytes(any(), anyString(), anyString()))
+                .thenReturn("https://res.cloudinary.com/dudhz46j/image/upload/v1/inspections/overlays/overlay_test.png");
+
+        AiAnalysisService serviceWithCloudinary = new AiAnalysisService(
+                inspectionService,
+                inspectionImageService,
+                aiAnalysisResultRepository,
+                mockCloudinary,
+                restClientBuilder.build()
+        );
+
+        when(inspectionService.getInspectionById(1L)).thenReturn(sampleInspection);
+        when(inspectionImageService.getImageMetadata(1L, 1L)).thenReturn(sampleImage);
+        when(inspectionImageService.loadResource(sampleImage)).thenReturn(sampleResource);
+
+        PythonAnalysisResponse pythonResponse = new PythonAnalysisResponse();
+        pythonResponse.setStatus("SUCCESS");
+        pythonResponse.setCrackDetected(true);
+        pythonResponse.setScreeningCategory("SEVERE");
+        pythonResponse.setConfidence(0.92);
+        pythonResponse.setCrackAreaPercentage(4.5);
+        pythonResponse.setRegionsCount(2);
+        pythonResponse.setHighlightedImageUrl("/outputs/highlighted_123.png");
+
+        mockServer.expect(requestTo("http://127.0.0.1:8000/analyze"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(objectMapper.writeValueAsString(pythonResponse), MediaType.APPLICATION_JSON));
+
+        mockServer.expect(requestTo("http://127.0.0.1:8000/outputs/highlighted_123.png"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(new byte[]{10, 20, 30}, MediaType.IMAGE_PNG));
+
+        when(aiAnalysisResultRepository.save(any(AiAnalysisResult.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AiAnalysisResult result = serviceWithCloudinary.analyzeImage(1L, 1L);
+
+        mockServer.verify();
+        assertNotNull(result);
+        assertEquals("https://res.cloudinary.com/dudhz46j/image/upload/v1/inspections/overlays/overlay_test.png", result.getHighlightedImageUrl());
+        verify(mockCloudinary, times(1)).uploadBytes(any(), contains("overlay_"), eq("inspections/overlays"));
+    }
 }

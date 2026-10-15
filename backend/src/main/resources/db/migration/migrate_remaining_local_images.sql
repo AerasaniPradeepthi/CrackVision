@@ -49,8 +49,9 @@ FROM inspection_images_backup_remaining_20261015;
 -- WHERE id = 12 AND inspection_id = 4;
 
 -- Image ID #13 (pillar2.png, inspection 5)
+-- Resolves pillar photo using persistent Cloudinary pillar asset:
 -- UPDATE inspection_images
--- SET storage_path = 'https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/pillar2'
+-- SET storage_path = 'https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/pillarcrack'
 -- WHERE id = 13 AND inspection_id = 5;
 
 -- STEP 5: Verification query to confirm all updated rows begin with https://res.cloudinary.com/

@@ -19,6 +19,9 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.time.LocalDateTime;
@@ -28,10 +31,13 @@ import java.util.Optional;
 @Service
 public class AiAnalysisService {
 
+    private static final Logger log = LoggerFactory.getLogger(AiAnalysisService.class);
+
     private final InspectionService inspectionService;
     private final InspectionImageService inspectionImageService;
     private final AiAnalysisResultRepository aiAnalysisResultRepository;
     private final RestClient restClient;
+    private final CloudinaryService cloudinaryService;
 
     @Value("${crackvision.ai-service.read-timeout-ms:30000}")
     private int readTimeoutMs;
@@ -41,12 +47,14 @@ public class AiAnalysisService {
             InspectionService inspectionService,
             InspectionImageService inspectionImageService,
             AiAnalysisResultRepository aiAnalysisResultRepository,
+            @Autowired(required = false) CloudinaryService cloudinaryService,
             @Value("${crackvision.ai-service.url:http://127.0.0.1:8000}") String aiServiceUrl,
             @Value("${crackvision.ai-service.connect-timeout-ms:5000}") int connectTimeoutMs,
             @Value("${crackvision.ai-service.read-timeout-ms:30000}") int readTimeoutMs) {
         this.inspectionService = inspectionService;
         this.inspectionImageService = inspectionImageService;
         this.aiAnalysisResultRepository = aiAnalysisResultRepository;
+        this.cloudinaryService = cloudinaryService;
         this.readTimeoutMs = readTimeoutMs;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -65,9 +73,20 @@ public class AiAnalysisService {
             InspectionImageService inspectionImageService,
             AiAnalysisResultRepository aiAnalysisResultRepository,
             RestClient restClient) {
+        this(inspectionService, inspectionImageService, aiAnalysisResultRepository, null, restClient);
+    }
+
+    // Constructor for testing with mock RestClient and CloudinaryService
+    public AiAnalysisService(
+            InspectionService inspectionService,
+            InspectionImageService inspectionImageService,
+            AiAnalysisResultRepository aiAnalysisResultRepository,
+            CloudinaryService cloudinaryService,
+            RestClient restClient) {
         this.inspectionService = inspectionService;
         this.inspectionImageService = inspectionImageService;
         this.aiAnalysisResultRepository = aiAnalysisResultRepository;
+        this.cloudinaryService = cloudinaryService;
         this.restClient = restClient;
         this.readTimeoutMs = 30000;
     }
@@ -151,7 +170,36 @@ public class AiAnalysisService {
         result.setRegionsCount(pythonResponse.getRegionsCount() != null
                 ? pythonResponse.getRegionsCount()
                 : 0);
-        result.setHighlightedImageUrl(pythonResponse.getHighlightedImageUrl());
+        String finalHighlightedUrl = pythonResponse.getHighlightedImageUrl();
+
+        // If an overlay was produced and Cloudinary is configured, upload the overlay for persistent HTTPS delivery
+        if (finalHighlightedUrl != null && !finalHighlightedUrl.isBlank() && cloudinaryService != null && cloudinaryService.isConfigured()) {
+            try {
+                String overlayPath = finalHighlightedUrl.startsWith("/") ? finalHighlightedUrl : "/" + finalHighlightedUrl;
+                byte[] overlayBytes = restClient.get()
+                        .uri(overlayPath)
+                        .retrieve()
+                        .body(byte[].class);
+
+                if (overlayBytes != null && overlayBytes.length > 0) {
+                    String baseName = image.getStoredFilename() != null ? image.getStoredFilename() : "image_" + image.getId();
+                    if (baseName.contains(".")) {
+                        baseName = baseName.substring(0, baseName.lastIndexOf("."));
+                    }
+                    String overlayFilename = "overlay_" + baseName + ".png";
+                    String cloudinaryOverlayUrl = cloudinaryService.uploadBytes(overlayBytes, overlayFilename, "inspections/overlays");
+                    if (cloudinaryOverlayUrl != null && !cloudinaryOverlayUrl.isBlank()) {
+                        finalHighlightedUrl = cloudinaryOverlayUrl;
+                        log.info("Persisted AI overlay to Cloudinary: {}", finalHighlightedUrl);
+                    }
+                }
+            } catch (Exception e) {
+                // Non-fatal: if Cloudinary upload fails, retain original relative URL
+                log.warn("Failed to persist AI overlay to Cloudinary, retaining relative URL [{}]: {}", finalHighlightedUrl, e.getMessage());
+            }
+        }
+
+        result.setHighlightedImageUrl(finalHighlightedUrl);
 
         if (pythonResponse.getModelInfo() != null) {
             result.setModelName(pythonResponse.getModelInfo().getName());
