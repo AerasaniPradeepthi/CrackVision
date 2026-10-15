@@ -20,6 +20,9 @@ public class AnalysisSnapshotDto {
     private String status;
     private String modelName;
     private String highlightedImageUrl;
+    private String imageUrl;
+    private String storagePath;
+    private String originalFilename;
 
     // Latest engineer review fields (if available)
     private ReviewDecision latestReviewDecision;
@@ -40,6 +43,11 @@ public class AnalysisSnapshotDto {
             this.analysisId = analysis.getId();
             this.inspectionId = analysis.getInspectionId();
             this.imageId = analysis.getImageId();
+            if (analysis.getInspectionImage() != null) {
+                this.imageUrl = analysis.getInspectionImage().getImageUrl();
+                this.storagePath = analysis.getInspectionImage().getStoragePath();
+                this.originalFilename = analysis.getInspectionImage().getOriginalFilename();
+            }
             this.analyzedAt = analysis.getAnalyzedAt();
             this.crackDetected = analysis.getCrackDetected();
             this.screeningCategory = analysis.getScreeningCategory();
@@ -193,5 +201,29 @@ public class AnalysisSnapshotDto {
 
     public void setReviewerEmail(String reviewerEmail) {
         this.reviewerEmail = reviewerEmail;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    public String getStoragePath() {
+        return storagePath;
+    }
+
+    public void setStoragePath(String storagePath) {
+        this.storagePath = storagePath;
+    }
+
+    public String getOriginalFilename() {
+        return originalFilename;
+    }
+
+    public void setOriginalFilename(String originalFilename) {
+        this.originalFilename = originalFilename;
     }
 }

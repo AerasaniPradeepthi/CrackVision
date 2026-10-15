@@ -296,7 +296,27 @@ export default function DashboardOverview({
       .then((results) => {
         if (active) {
           const combined = results.flat()
-          setRecentAnalyses(combined)
+
+          // 1. Sort chronologically descending across all inspections
+          combined.sort((a, b) => {
+            const dateA = new Date(a.analyzedAt || a.createdAt || 0).getTime()
+            const dateB = new Date(b.analyzedAt || b.createdAt || 0).getTime()
+            if (dateA !== dateB) return dateB - dateA
+            return (b.id || 0) - (a.id || 0)
+          })
+
+          // 2. Deduplicate by unique image ID so each card represents its own photo
+          const seenImageIds = new Set()
+          const distinctByImage = []
+          for (const item of combined) {
+            const imgKey = item.imageId ? String(item.imageId) : `analysis-${item.id}`
+            if (!seenImageIds.has(imgKey)) {
+              seenImageIds.add(imgKey)
+              distinctByImage.push(item)
+            }
+          }
+
+          setRecentAnalyses(distinctByImage)
           setLoadingAnalyses(false)
         }
       })
@@ -1810,6 +1830,7 @@ export default function DashboardOverview({
       {/* 3. AI Crack Screening Modal */}
       {analysisTarget && (
         <AiAnalysisModal
+          key={`analysis-modal-${analysisTarget.inspection.id}-${analysisTarget.imageId}`}
           inspection={analysisTarget.inspection}
           initialImageId={analysisTarget.imageId}
           token={token}

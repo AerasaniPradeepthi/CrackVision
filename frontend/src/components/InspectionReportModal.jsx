@@ -128,14 +128,21 @@ export default function InspectionReportModal({
           setAnalyses(normA)
           setReviews(normR)
 
-          // If images exist and no highlighted image is available, load first image preview
+          // If images exist, match the image from latest analysis or prefer persistent cloud photo
           if (normI.length > 0) {
-            const firstImg = normI[0]
-            const directUrl = firstImg.imageUrl || (firstImg.storagePath?.startsWith('http') ? firstImg.storagePath : null)
-            if (directUrl && directUrl.startsWith('http')) {
+            const latestA = normA.length > 0 ? normA[normA.length - 1] : null
+            const targetImg = (latestA?.imageId
+              ? normI.find((img) => String(img.id) === String(latestA.imageId))
+              : null) || normI.find((img) => (img.imageUrl && img.imageUrl.startsWith('http')) || (img.storagePath && img.storagePath.startsWith('http'))) || normI[0]
+
+            const directUrl = (targetImg.imageUrl && targetImg.imageUrl.startsWith('http'))
+              ? targetImg.imageUrl
+              : (targetImg.storagePath && targetImg.storagePath.startsWith('http') ? targetImg.storagePath : null)
+
+            if (directUrl) {
               setOriginalBlobUrl(directUrl)
             } else {
-              fetch(`/api/inspections/${inspection.id}/images/${firstImg.id}`, {
+              fetch(`/api/inspections/${inspection.id}/images/${targetImg.id}`, {
                 headers: authHeaders(),
               })
                 .then((res) => (res.ok ? res.blob() : null))

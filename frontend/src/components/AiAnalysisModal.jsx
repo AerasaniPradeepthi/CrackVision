@@ -78,7 +78,7 @@ export default function AiAnalysisModal({
   // Original image state loaded securely via Bearer token
   const [originalBlobUrl, setOriginalBlobUrl] = useState(null)
   const [loadingImage, setLoadingImage] = useState(false)
-  const [imageLoadError, setImageLoadError] = useState(null)
+  const [failedImages, setFailedImages] = useState({})
   const [failedThumbnails, setFailedThumbnails] = useState({})
 
   // Analysis result state
@@ -175,27 +175,21 @@ export default function AiAnalysisModal({
     // Otherwise, fetch authenticated blob from backend endpoint
     const fetchOriginalImage = async () => {
       setLoadingImage(true)
-      setImageLoadError(null)
-      setOriginalBlobUrl(null)
       try {
         const res = await fetch(`/api/inspections/${inspection.id}/images/${selectedImageId}`, {
           headers: authHeaders(),
         })
         if (!res.ok) {
-          if (res.status === 404) {
-            throw new Error('Original photo unavailable')
-          }
-          throw new Error(`Failed to load inspection photo (HTTP ${res.status})`)
+          throw new Error('Original photo unavailable')
         }
         const blob = await res.blob()
         if (active) {
           currentBlobUrl = URL.createObjectURL(blob)
           setOriginalBlobUrl(currentBlobUrl)
-          setImageLoadError(null)
         }
-      } catch (err) {
+      } catch {
         if (active) {
-          setImageLoadError(err.message || 'Original photo unavailable')
+          setFailedImages((prev) => ({ ...prev, [selectedImageId]: true }))
           setOriginalBlobUrl(null)
         }
       } finally {
@@ -382,7 +376,11 @@ export default function AiAnalysisModal({
           URL.revokeObjectURL(originalBlobUrl)
           setOriginalBlobUrl(null)
         }
-        setImageLoadError(null)
+        setFailedImages((prev) => {
+          const next = { ...prev }
+          delete next[idToDelete]
+          return next
+        })
         setAnalysis(null)
         setLatestReview(null)
         setOverlayError(false)
@@ -416,6 +414,7 @@ export default function AiAnalysisModal({
     ? selectedImageMeta.imageUrl
     : (selectedImageMeta?.storagePath?.startsWith('http') ? selectedImageMeta.storagePath : null)
   const effectiveOriginalUrl = directImageUrl || originalBlobUrl
+  const isImageUnavailable = Boolean(failedImages[selectedImageId])
   const highlightedUrl = analysis ? formatHighlightedImageUrl(analysis.highlightedImageUrl) : null
 
   const getCategoryBadgeClass = (category) => {
@@ -549,7 +548,6 @@ export default function AiAnalysisModal({
                       key={img.id}
                       onClick={() => {
                         if (!runningAnalysis && !deletingPhoto) {
-                          setImageLoadError(null)
                           if (originalBlobUrl) {
                             URL.revokeObjectURL(originalBlobUrl)
                             setOriginalBlobUrl(null)
@@ -758,17 +756,21 @@ export default function AiAnalysisModal({
                           </svg>
                           <span className="text-xs">Loading photo...</span>
                         </div>
-                      ) : effectiveOriginalUrl && !imageLoadError ? (
+                      ) : effectiveOriginalUrl && !isImageUnavailable ? (
                         <img
                           src={effectiveOriginalUrl}
                           alt="Original structural inspection"
                           className="rounded-lg object-contain max-h-[320px] w-full bg-slate-900"
-                          onError={() => setImageLoadError('Original photo unavailable')}
+                          onError={() => setFailedImages((prev) => ({ ...prev, [selectedImageId]: true }))}
                         />
                       ) : (
                         <div className="flex flex-col items-center justify-center h-full min-h-[180px] max-h-[320px] w-full rounded-lg bg-slate-900 p-4 text-center text-slate-400">
                           <span className="text-xs font-semibold">Original photo unavailable</span>
-                          <span className="text-[10px] text-slate-500 mt-1">Local file not found in storage</span>
+                          <span className="text-[10px] text-slate-500 mt-1">
+                            {selectedImageMeta?.originalFilename
+                              ? `"${selectedImageMeta.originalFilename}" is a local disk reference not in cloud storage`
+                              : 'Local file not found in storage'}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -822,12 +824,12 @@ export default function AiAnalysisModal({
                         </svg>
                         <span className="text-xs">Loading photo from secure storage...</span>
                       </div>
-                    ) : effectiveOriginalUrl && !imageLoadError ? (
+                    ) : effectiveOriginalUrl && !isImageUnavailable ? (
                       <img
                         src={effectiveOriginalUrl}
                         alt="Original structural photo"
                         className="rounded-lg object-contain max-h-[350px] w-full bg-slate-900"
-                        onError={() => setImageLoadError('Original photo unavailable')}
+                        onError={() => setFailedImages((prev) => ({ ...prev, [selectedImageId]: true }))}
                       />
                     ) : (
                       <div className="p-8 text-center text-xs flex flex-col items-center justify-center gap-2">
@@ -838,7 +840,9 @@ export default function AiAnalysisModal({
                         </div>
                         <span className="font-semibold text-slate-700 text-sm">Original photo unavailable</span>
                         <span className="text-slate-500 max-w-xs">
-                          The original file for this inspection photo is stored on local disk and is not available in cloud storage.
+                          {selectedImageMeta?.originalFilename
+                            ? `The file "${selectedImageMeta.originalFilename}" is stored as a local disk reference that was not persisted to cloud storage.`
+                            : 'The original file for this inspection photo is stored on local disk and is not available in cloud storage.'}
                         </span>
                       </div>
                     )}

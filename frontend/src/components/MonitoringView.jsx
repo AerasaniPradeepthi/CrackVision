@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { resolveImageUrl } from '../api/config'
 
 function parseArrayResponse(data) {
   if (Array.isArray(data)) return data
@@ -12,17 +13,17 @@ function parseArrayResponse(data) {
 
 function formatHighlightedImageUrl(url) {
   if (!url) return null
-  if (url.startsWith('/outputs/')) return url
-  if (url.startsWith('outputs/')) return `/${url}`
+  if (url.startsWith('/outputs/')) return resolveImageUrl(url)
+  if (url.startsWith('outputs/')) return resolveImageUrl(`/${url}`)
   try {
     const parsed = new URL(url)
     if (parsed.pathname.startsWith('/outputs')) {
-      return parsed.pathname
+      return resolveImageUrl(parsed.pathname)
     }
   } catch {
     // not a full url
   }
-  return url
+  return resolveImageUrl(url)
 }
 
 function formatDate(dateStr) {
@@ -143,14 +144,27 @@ function getTrendBadge(trend) {
 }
 
 // Secure Image Component for Baseline & Current inspection photos
-function SecureComparisonImage({ inspectionId, imageId, highlightedUrl, token, title }) {
-  const [viewMode, setViewMode] = useState('highlighted') // 'highlighted' | 'original'
+function SecureComparisonImage({
+  inspectionId,
+  imageId,
+  highlightedUrl,
+  imageUrl,
+  storagePath,
+  originalFilename,
+  token,
+  title,
+}) {
+  const effectiveHighlighted = formatHighlightedImageUrl(highlightedUrl)
+  const directOriginalUrl = (imageUrl && imageUrl.startsWith('http'))
+    ? imageUrl
+    : (storagePath && storagePath.startsWith('http') ? storagePath : null)
+
+  const [viewMode, setViewMode] = useState(effectiveHighlighted ? 'highlighted' : 'original')
   const [blobUrl, setBlobUrl] = useState(null)
-  const [loadingOriginal, setLoadingOriginal] = useState(false)
   const [loadError, setLoadError] = useState(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
 
-  const effectiveHighlighted = formatHighlightedImageUrl(highlightedUrl)
+  const loadingOriginal = viewMode === 'original' && !directOriginalUrl && !blobUrl && !loadError && Boolean(inspectionId && imageId && token)
 
   // Revoke blob URL on component unmount
   useEffect(() => {
@@ -161,29 +175,49 @@ function SecureComparisonImage({ inspectionId, imageId, highlightedUrl, token, t
     }
   }, [blobUrl])
 
-  const handleSwitchToOriginal = async () => {
+  const handleSwitchToOriginal = () => {
     setViewMode('original')
-    if (blobUrl || loadingOriginal) return
-    if (!inspectionId || !imageId || !token) return
-
-    setLoadingOriginal(true)
     setLoadError(null)
-    try {
-      const res = await fetch(`/api/inspections/${inspectionId}/images/${imageId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const blob = await res.blob()
-      const created = URL.createObjectURL(blob)
-      setBlobUrl(created)
-    } catch (err) {
-      setLoadError(err.message || 'Failed to load photo')
-    } finally {
-      setLoadingOriginal(false)
-    }
   }
 
-  const currentSrc = viewMode === 'highlighted' && effectiveHighlighted ? effectiveHighlighted : blobUrl
+  // When in original mode without a direct URL, load the image blob
+  useEffect(() => {
+    let active = true
+    if (viewMode !== 'original' || directOriginalUrl || blobUrl || !inspectionId || !imageId || !token) {
+      return
+    }
+
+    fetch(`/api/inspections/${inspectionId}/images/${imageId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 404) {
+            throw new Error(originalFilename ? `File "${originalFilename}" not in cloud storage` : 'Original photo unavailable')
+          }
+          throw new Error(`HTTP ${res.status}`)
+        }
+        return res.blob()
+      })
+      .then((blob) => {
+        if (active) {
+          setBlobUrl(URL.createObjectURL(blob))
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setLoadError(err.message || 'Failed to load photo')
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [viewMode, directOriginalUrl, blobUrl, inspectionId, imageId, token, originalFilename])
+
+  const currentSrc = viewMode === 'highlighted' && effectiveHighlighted
+    ? effectiveHighlighted
+    : (directOriginalUrl || blobUrl)
 
   return (
     <div className="flex flex-col rounded-lg border border-slate-200 bg-slate-50 overflow-hidden text-xs">
@@ -240,6 +274,8 @@ function SecureComparisonImage({ inspectionId, imageId, highlightedUrl, token, t
               onError={() => {
                 if (viewMode === 'highlighted') {
                   handleSwitchToOriginal()
+                } else {
+                  setLoadError(originalFilename ? `File "${originalFilename}" not in cloud storage` : 'Original photo unavailable')
                 }
               }}
             />
@@ -254,6 +290,9 @@ function SecureComparisonImage({ inspectionId, imageId, highlightedUrl, token, t
         ) : (
           <div className="text-center p-4 text-slate-400">
             <span className="text-[11px]">No overlay or image record found</span>
+            {originalFilename && (
+              <p className="text-[10px] text-slate-500 mt-1">&ldquo;{originalFilename}&rdquo;</p>
+            )}
           </div>
         )}
       </div>
@@ -1162,6 +1201,9 @@ export default function MonitoringView({
                         inspectionId={comparisonData.baseline.inspectionId}
                         imageId={comparisonData.baseline.imageId}
                         highlightedUrl={comparisonData.baseline.highlightedImageUrl}
+                        imageUrl={comparisonData.baseline.imageUrl}
+                        storagePath={comparisonData.baseline.storagePath}
+                        originalFilename={comparisonData.baseline.originalFilename}
                         token={token}
                         title={`Baseline Analysis #${comparisonData.baseline.analysisId}`}
                       />
@@ -1179,6 +1221,9 @@ export default function MonitoringView({
                         inspectionId={comparisonData.current.inspectionId}
                         imageId={comparisonData.current.imageId}
                         highlightedUrl={comparisonData.current.highlightedImageUrl}
+                        imageUrl={comparisonData.current.imageUrl}
+                        storagePath={comparisonData.current.storagePath}
+                        originalFilename={comparisonData.current.originalFilename}
                         token={token}
                         title={`Current Analysis #${comparisonData.current.analysisId}`}
                       />
