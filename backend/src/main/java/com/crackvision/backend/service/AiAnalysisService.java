@@ -55,22 +55,22 @@ public class AiAnalysisService {
             @Autowired(required = false) CloudinaryService cloudinaryService,
             @Value("${crackvision.ai-service.url:http://127.0.0.1:8000}") String aiServiceUrl,
             @Value("${crackvision.ai-service.api-key:}") String apiKey,
-            @Value("${crackvision.ai-service.connect-timeout-ms:5000}") int connectTimeoutMs,
-            @Value("${crackvision.ai-service.read-timeout-ms:30000}") int readTimeoutMs) {
+            @Value("${crackvision.ai-service.connect-timeout-ms:15000}") int connectTimeoutMs,
+            @Value("${crackvision.ai-service.read-timeout-ms:60000}") int readTimeoutMs) {
         this.inspectionService = inspectionService;
         this.inspectionImageService = inspectionImageService;
         this.aiAnalysisResultRepository = aiAnalysisResultRepository;
         this.cloudinaryService = cloudinaryService;
-        this.aiServiceUrl = aiServiceUrl;
+        this.aiServiceUrl = normalizeAiServiceUrl(aiServiceUrl);
         this.apiKey = apiKey != null ? apiKey.trim() : "";
-        this.readTimeoutMs = readTimeoutMs;
+        this.readTimeoutMs = Math.max(readTimeoutMs, 30000);
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(connectTimeoutMs);
-        requestFactory.setReadTimeout(readTimeoutMs);
+        requestFactory.setConnectTimeout(Math.max(connectTimeoutMs, 10000));
+        requestFactory.setReadTimeout(this.readTimeoutMs);
 
         this.restClient = RestClient.builder()
-                .baseUrl(aiServiceUrl)
+                .baseUrl(this.aiServiceUrl)
                 .requestFactory(requestFactory)
                 .build();
     }
@@ -107,9 +107,33 @@ public class AiAnalysisService {
         this.aiAnalysisResultRepository = aiAnalysisResultRepository;
         this.cloudinaryService = cloudinaryService;
         this.restClient = restClient;
-        this.aiServiceUrl = aiServiceUrl != null ? aiServiceUrl : "http://127.0.0.1:8000";
+        this.aiServiceUrl = normalizeAiServiceUrl(aiServiceUrl);
         this.apiKey = apiKey != null ? apiKey.trim() : "";
-        this.readTimeoutMs = 30000;
+        this.readTimeoutMs = 60000;
+    }
+
+    /**
+     * Normalizes the AI service URL. If set to the collided external Streamlit placeholder
+     * https://crackvision-ai.onrender.com, automatically redirects to Render internal private network.
+     */
+    public static String normalizeAiServiceUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return "http://127.0.0.1:8000";
+        }
+        String trimmed = url.trim();
+        while (trimmed.endsWith("/")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        if (trimmed.equalsIgnoreCase("https://crackvision-ai.onrender.com")
+                || trimmed.equalsIgnoreCase("http://crackvision-ai.onrender.com")) {
+            log.warn("Configured AI service URL '{}' points to known external Streamlit application. Auto-routing to Render private network: http://crackvision-ai:10000", url);
+            return "http://crackvision-ai:10000";
+        }
+        return trimmed;
+    }
+
+    public String getAiServiceUrl() {
+        return aiServiceUrl;
     }
 
     /**

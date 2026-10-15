@@ -384,4 +384,28 @@ class AiAnalysisServiceTest {
         assertEquals("HEALTHY", health.get("serviceStatus"));
         mockServer.verify();
     }
+
+    @Test
+    void testNormalizeAiServiceUrl_CollidedStreamlitUrl_RedirectsToRenderPrivateNetwork() {
+        assertEquals("http://crackvision-ai:10000",
+                AiAnalysisService.normalizeAiServiceUrl("https://crackvision-ai.onrender.com"));
+        assertEquals("http://crackvision-ai:10000",
+                AiAnalysisService.normalizeAiServiceUrl("https://crackvision-ai.onrender.com/"));
+        assertEquals("http://crackvision-ai:10000",
+                AiAnalysisService.normalizeAiServiceUrl("http://crackvision-ai.onrender.com"));
+    }
+
+    @Test
+    void testNormalizeAiServiceUrl_ValidUrls_PreservesUrl() {
+        assertEquals("http://127.0.0.1:8000",
+                AiAnalysisService.normalizeAiServiceUrl("http://127.0.0.1:8000"));
+        assertEquals("http://127.0.0.1:8000",
+                AiAnalysisService.normalizeAiServiceUrl("http://127.0.0.1:8000/"));
+        assertEquals("http://crackvision-ai:10000",
+                AiAnalysisService.normalizeAiServiceUrl("http://crackvision-ai:10000"));
+        assertEquals("http://127.0.0.1:8000",
+                AiAnalysisService.normalizeAiServiceUrl(null));
+        assertEquals("http://127.0.0.1:8000",
+                AiAnalysisService.normalizeAiServiceUrl("   "));
+    }
 }

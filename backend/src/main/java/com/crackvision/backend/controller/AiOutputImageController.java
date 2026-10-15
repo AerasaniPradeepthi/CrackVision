@@ -42,15 +42,16 @@ public class AiOutputImageController {
     @Autowired
     public AiOutputImageController(
             @Value("${crackvision.ai-service.url:http://127.0.0.1:8000}") String aiServiceUrl,
-            @Value("${crackvision.ai-service.connect-timeout-ms:5000}") int connectTimeoutMs,
-            @Value("${crackvision.ai-service.read-timeout-ms:15000}") int readTimeoutMs) {
+            @Value("${crackvision.ai-service.connect-timeout-ms:15000}") int connectTimeoutMs,
+            @Value("${crackvision.ai-service.read-timeout-ms:60000}") int readTimeoutMs) {
 
+        String resolvedUrl = com.crackvision.backend.service.AiAnalysisService.normalizeAiServiceUrl(aiServiceUrl);
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(connectTimeoutMs);
-        requestFactory.setReadTimeout(readTimeoutMs);
+        requestFactory.setConnectTimeout(Math.max(connectTimeoutMs, 10000));
+        requestFactory.setReadTimeout(Math.max(readTimeoutMs, 30000));
 
         this.aiRestClient = RestClient.builder()
-                .baseUrl(aiServiceUrl)
+                .baseUrl(resolvedUrl)
                 .requestFactory(requestFactory)
                 .build();
     }
