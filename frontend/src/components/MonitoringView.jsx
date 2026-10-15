@@ -155,7 +155,7 @@ function SecureComparisonImage({ inspectionId, imageId, highlightedUrl, token, t
   // Revoke blob URL on component unmount
   useEffect(() => {
     return () => {
-      if (blobUrl) {
+      if (blobUrl && blobUrl.startsWith('blob:')) {
         URL.revokeObjectURL(blobUrl)
       }
     }

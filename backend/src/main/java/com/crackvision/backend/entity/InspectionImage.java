@@ -1,6 +1,7 @@
 package com.crackvision.backend.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -20,10 +21,10 @@ public class InspectionImage {
     @Column(name = "original_filename", nullable = false)
     private String originalFilename;
 
-    @Column(name = "stored_filename", nullable = false)
+    @Column(name = "stored_filename", nullable = false, length = 500)
     private String storedFilename;
 
-    @Column(name = "storage_path", nullable = false)
+    @Column(name = "storage_path", nullable = false, length = 1000)
     private String storagePath;
 
     @Column(name = "content_type", nullable = false)
@@ -125,5 +126,16 @@ public class InspectionImage {
 
     public String getUploadTimestamp() {
         return createdAt;
+    }
+
+    @JsonProperty("imageUrl")
+    public String getImageUrl() {
+        if (storagePath != null && (storagePath.startsWith("http://") || storagePath.startsWith("https://"))) {
+            return storagePath;
+        }
+        if (id != null && inspection != null && inspection.getId() != null) {
+            return "/api/inspections/" + inspection.getId() + "/images/" + id;
+        }
+        return null;
     }
 }

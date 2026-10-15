@@ -77,19 +77,21 @@ export default function AiAnalysisModal({
   const [originalBlobUrl, setOriginalBlobUrl] = useState(null)
   const [loadingImage, setLoadingImage] = useState(false)
   const [imageLoadError, setImageLoadError] = useState(null)
+  const [failedThumbnails, setFailedThumbnails] = useState({})
 
   // Analysis result state
   const [analysis, setAnalysis] = useState(null)
   const [loadingExistingAnalysis, setLoadingExistingAnalysis] = useState(false)
   const [runningAnalysis, setRunningAnalysis] = useState(false)
   const [analysisError, setAnalysisError] = useState(null)
+  const [overlayError, setOverlayError] = useState(false)
 
   // Engineer review state
   const [latestReview, setLatestReview] = useState(null)
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
 
-  // View comparison mode: 'highlighted' | 'original' | 'side-by-side'
-  const [viewMode, setViewMode] = useState('highlighted')
+  // View comparison mode: 'original' | 'highlighted' | 'side-by-side'
+  const [viewMode, setViewMode] = useState('original')
 
   // Delete photo state
   const [photoToDelete, setPhotoToDelete] = useState(null)
@@ -121,9 +123,7 @@ export default function AiAnalysisModal({
         if (active) {
           setImages(norm)
           // If no initial image selected, pick the latest one
-          if (!selectedImageId && norm.length > 0) {
-            setSelectedImageId(norm[norm.length - 1].id)
-          }
+          setSelectedImageId((prev) => (prev ? prev : (norm.length > 0 ? norm[norm.length - 1].id : null)))
         }
       } catch (err) {
         if (active) {
@@ -140,9 +140,9 @@ export default function AiAnalysisModal({
     return () => {
       active = false
     }
-  }, [inspection?.id, selectedImageId, authHeaders])
+  }, [inspection?.id, authHeaders])
 
-  // 2. Fetch original image using Bearer token and create Blob URL with cleanup
+  // 2. Fetch or load original image (support direct Cloudinary HTTPS URL or Bearer endpoint)
   useEffect(() => {
     let active = true
     let currentBlobUrl = null
@@ -151,24 +151,50 @@ export default function AiAnalysisModal({
       return
     }
 
+    // Do not attempt to fetch original photo before images list has loaded
+    if (loadingImages || images.length === 0) {
+      return
+    }
+
+    const currentImageObj = images.find((i) => String(i.id) === String(selectedImageId))
+    if (!currentImageObj) {
+      return
+    }
+
+    const directUrl = (currentImageObj.imageUrl && currentImageObj.imageUrl.startsWith('http'))
+      ? currentImageObj.imageUrl
+      : (currentImageObj.storagePath && currentImageObj.storagePath.startsWith('http') ? currentImageObj.storagePath : null)
+
+    if (directUrl) {
+      // Direct Cloudinary / HTTPS URL is rendered directly in <img> without network fetch
+      return
+    }
+
+    // Otherwise, fetch authenticated blob from backend endpoint
     const fetchOriginalImage = async () => {
       setLoadingImage(true)
       setImageLoadError(null)
+      setOriginalBlobUrl(null)
       try {
         const res = await fetch(`/api/inspections/${inspection.id}/images/${selectedImageId}`, {
           headers: authHeaders(),
         })
         if (!res.ok) {
+          if (res.status === 404) {
+            throw new Error('Original photo unavailable')
+          }
           throw new Error(`Failed to load inspection photo (HTTP ${res.status})`)
         }
         const blob = await res.blob()
         if (active) {
           currentBlobUrl = URL.createObjectURL(blob)
           setOriginalBlobUrl(currentBlobUrl)
+          setImageLoadError(null)
         }
       } catch (err) {
         if (active) {
-          setImageLoadError(err.message || 'Could not load photo preview')
+          setImageLoadError(err.message || 'Original photo unavailable')
+          setOriginalBlobUrl(null)
         }
       } finally {
         if (active) {
@@ -181,11 +207,11 @@ export default function AiAnalysisModal({
 
     return () => {
       active = false
-      if (currentBlobUrl) {
+      if (currentBlobUrl && currentBlobUrl.startsWith('blob:')) {
         URL.revokeObjectURL(currentBlobUrl)
       }
     }
-  }, [inspection?.id, selectedImageId, token, authHeaders])
+  }, [inspection?.id, selectedImageId, token, images, loadingImages, authHeaders])
 
   // 3. Check for existing analysis when selectedImageId changes
   useEffect(() => {
@@ -198,6 +224,7 @@ export default function AiAnalysisModal({
     const fetchExistingAnalysis = async () => {
       setLoadingExistingAnalysis(true)
       setAnalysisError(null)
+      setOverlayError(false)
       try {
         const res = await fetch(`/api/inspections/${inspection.id}/images/${selectedImageId}/analysis`, {
           headers: authHeaders(),
@@ -206,16 +233,12 @@ export default function AiAnalysisModal({
           const data = await res.json()
           if (active) {
             setAnalysis(data)
-            if (data.highlightedImageUrl) {
-              setViewMode('highlighted')
-            } else {
-              setViewMode('original')
-            }
+            setOverlayError(false)
           }
         } else if (res.status === 404) {
           if (active) {
             setAnalysis(null)
-            setViewMode('original')
+            setOverlayError(false)
           }
         } else {
           throw new Error(`Failed to check existing analysis (HTTP ${res.status})`)
@@ -224,6 +247,7 @@ export default function AiAnalysisModal({
         if (active) {
           // Non-blocking: simply leave analysis null so user can run it
           setAnalysis(null)
+          setOverlayError(false)
         }
       } finally {
         if (active) {
@@ -305,6 +329,7 @@ export default function AiAnalysisModal({
 
       const data = await res.json()
       setAnalysis(data)
+      setOverlayError(false)
       if (data.highlightedImageUrl) {
         setViewMode('highlighted')
       } else {
@@ -355,9 +380,11 @@ export default function AiAnalysisModal({
           URL.revokeObjectURL(originalBlobUrl)
           setOriginalBlobUrl(null)
         }
+        setImageLoadError(null)
         setAnalysis(null)
         setLatestReview(null)
-        setViewMode('highlighted')
+        setOverlayError(false)
+        setViewMode('original')
         if (updatedImages.length > 0) {
           setSelectedImageId(updatedImages[0].id)
         } else {
@@ -383,6 +410,10 @@ export default function AiAnalysisModal({
   }
 
   const selectedImageMeta = images.find((img) => String(img.id) === String(selectedImageId))
+  const directImageUrl = (selectedImageMeta?.imageUrl && selectedImageMeta.imageUrl.startsWith('http'))
+    ? selectedImageMeta.imageUrl
+    : (selectedImageMeta?.storagePath?.startsWith('http') ? selectedImageMeta.storagePath : null)
+  const effectiveOriginalUrl = directImageUrl || originalBlobUrl
   const highlightedUrl = analysis ? formatHighlightedImageUrl(analysis.highlightedImageUrl) : null
 
   const getCategoryBadgeClass = (category) => {
@@ -516,6 +547,13 @@ export default function AiAnalysisModal({
                       key={img.id}
                       onClick={() => {
                         if (!runningAnalysis && !deletingPhoto) {
+                          setImageLoadError(null)
+                          if (originalBlobUrl) {
+                            URL.revokeObjectURL(originalBlobUrl)
+                            setOriginalBlobUrl(null)
+                          }
+                          setLoadingImage(false)
+                          setOverlayError(false)
                           setSelectedImageId(img.id)
                         }
                       }}
@@ -527,17 +565,41 @@ export default function AiAnalysisModal({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <div
-                            className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
-                              isSelected
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
-                            }`}
-                          >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          </div>
+                          {(() => {
+                            const isDirectHttp = (img.imageUrl && img.imageUrl.startsWith('http')) || (img.storagePath && img.storagePath.startsWith('http'))
+                            const thumbUrl = isDirectHttp
+                              ? (img.imageUrl || img.storagePath)
+                              : (isSelected && originalBlobUrl ? originalBlobUrl : null)
+                            const isBroken = failedThumbnails[img.id]
+
+                            if (thumbUrl && !isBroken) {
+                              return (
+                                <img
+                                  src={thumbUrl}
+                                  alt={img.originalFilename}
+                                  onError={() => setFailedThumbnails((prev) => ({ ...prev, [img.id]: true }))}
+                                  className={`h-7 w-7 rounded-lg object-cover shrink-0 border ${
+                                    isSelected ? 'border-blue-600' : 'border-slate-200'
+                                  }`}
+                                />
+                              )
+                            }
+
+                            return (
+                              <div
+                                className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                  isSelected
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'
+                                }`}
+                                title={!isDirectHttp ? 'Local storage photo (unauthenticated thumbnail unavailable)' : 'Photo preview unavailable'}
+                              >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                            )
+                          })()}
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-800 truncate" title={img.originalFilename}>
                               {img.originalFilename}
@@ -617,6 +679,17 @@ export default function AiAnalysisModal({
                 <div className="flex items-center gap-1.5 p-1 rounded-lg bg-slate-100 text-xs font-semibold">
                   <button
                     type="button"
+                    onClick={() => setViewMode('original')}
+                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                      viewMode === 'original'
+                        ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Original Photo
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setViewMode('highlighted')}
                     disabled={!highlightedUrl}
                     className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
@@ -626,17 +699,6 @@ export default function AiAnalysisModal({
                     }`}
                   >
                     AI Overlay
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('original')}
-                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      viewMode === 'original'
-                        ? 'bg-white text-blue-600 shadow-2xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Original Photo
                   </button>
                   <button
                     type="button"
@@ -681,56 +743,102 @@ export default function AiAnalysisModal({
 
               {/* Image Container */}
               <div className="rounded-xl border border-slate-200 bg-slate-950/5 overflow-hidden flex items-center justify-center min-h-[260px] max-h-[380px]">
-                {loadingImage ? (
-                  <div className="p-8 flex flex-col items-center justify-center text-slate-400">
-                    <svg className="animate-spin h-6 w-6 text-blue-600 mb-2" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    <span className="text-xs">Loading image from secure storage...</span>
-                  </div>
-                ) : imageLoadError ? (
-                  <div className="p-6 text-center text-xs text-red-600">
-                    <p className="font-semibold">Unable to render photo preview</p>
-                    <p className="mt-1 text-slate-500">{imageLoadError}</p>
-                  </div>
-                ) : viewMode === 'side-by-side' && highlightedUrl ? (
+                {viewMode === 'side-by-side' && highlightedUrl ? (
                   <div className="grid grid-cols-2 gap-2 w-full h-full p-2">
-                    <div className="flex flex-col items-center">
+                    {/* Left Column: Original Photo */}
+                    <div className="flex flex-col items-center justify-center h-full min-h-[240px]">
                       <span className="text-[10px] font-bold text-slate-500 uppercase mb-1">Original Photo</span>
-                      <img
-                        src={originalBlobUrl}
-                        alt="Original structural inspection"
-                        className="rounded-lg object-contain max-h-[320px] w-full bg-slate-900"
-                      />
+                      {loadingImage && !directImageUrl ? (
+                        <div className="flex flex-col items-center justify-center h-full min-h-[180px] max-h-[320px] w-full rounded-lg bg-slate-900 p-4 text-center text-slate-400">
+                          <svg className="animate-spin h-5 w-5 text-blue-500 mb-2" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          <span className="text-xs">Loading photo...</span>
+                        </div>
+                      ) : effectiveOriginalUrl && !imageLoadError ? (
+                        <img
+                          src={effectiveOriginalUrl}
+                          alt="Original structural inspection"
+                          className="rounded-lg object-contain max-h-[320px] w-full bg-slate-900"
+                          onError={() => setImageLoadError('Original photo unavailable')}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full min-h-[180px] max-h-[320px] w-full rounded-lg bg-slate-900 p-4 text-center text-slate-400">
+                          <span className="text-xs font-semibold">Original photo unavailable</span>
+                          <span className="text-[10px] text-slate-500 mt-1">Local file not found in storage</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex flex-col items-center">
+                    {/* Right Column: AI Detected Anomalies */}
+                    <div className="flex flex-col items-center justify-center h-full min-h-[240px]">
                       <span className="text-[10px] font-bold text-blue-600 uppercase mb-1">AI Detected Anomalies</span>
+                      {overlayError ? (
+                        <div className="flex flex-col items-center justify-center h-full min-h-[180px] max-h-[320px] w-full rounded-lg bg-slate-900 p-4 text-center text-slate-400">
+                          <span className="text-xs font-semibold">AI overlay unavailable</span>
+                          <span className="text-[10px] text-slate-500 mt-1">Detection overlay not found</span>
+                        </div>
+                      ) : (
+                        <img
+                          src={highlightedUrl}
+                          alt="AI highlighted anomalies"
+                          className="rounded-lg object-contain max-h-[320px] w-full bg-slate-900"
+                          onError={() => setOverlayError(true)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                ) : viewMode === 'highlighted' ? (
+                  <div className="relative w-full h-full flex items-center justify-center p-2">
+                    {highlightedUrl && !overlayError ? (
                       <img
                         src={highlightedUrl}
-                        alt="AI highlighted anomalies"
-                        className="rounded-lg object-contain max-h-[320px] w-full bg-slate-900"
-                      />
-                    </div>
-                  </div>
-                ) : viewMode === 'highlighted' && highlightedUrl ? (
-                  <div className="relative w-full h-full flex items-center justify-center p-2">
-                    <img
-                      src={highlightedUrl}
-                      alt="AI highlighted crack detection overlay"
-                      className="rounded-lg object-contain max-h-[350px] w-full bg-slate-900"
-                    />
-                  </div>
-                ) : (
-                  <div className="relative w-full h-full flex items-center justify-center p-2">
-                    {originalBlobUrl ? (
-                      <img
-                        src={originalBlobUrl}
-                        alt="Original structural photo"
+                        alt="AI highlighted crack detection overlay"
                         className="rounded-lg object-contain max-h-[350px] w-full bg-slate-900"
+                        onError={() => setOverlayError(true)}
                       />
                     ) : (
-                      <span className="text-xs text-slate-400">Photo preview unavailable</span>
+                      <div className="p-8 text-center text-xs text-slate-400 flex flex-col items-center justify-center gap-2">
+                        <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-1">
+                          <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                          </svg>
+                        </div>
+                        <span className="font-semibold text-slate-700 text-sm">AI Detection Overlay Unavailable</span>
+                        <span className="text-slate-500 max-w-xs">Detection overlay not found for this photo.</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Original Photo View (Default) */
+                  <div className="relative w-full h-full flex items-center justify-center p-2">
+                    {loadingImage && !directImageUrl ? (
+                      <div className="p-8 flex flex-col items-center justify-center text-slate-400">
+                        <svg className="animate-spin h-6 w-6 text-blue-600 mb-2" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        <span className="text-xs">Loading photo from secure storage...</span>
+                      </div>
+                    ) : effectiveOriginalUrl && !imageLoadError ? (
+                      <img
+                        src={effectiveOriginalUrl}
+                        alt="Original structural photo"
+                        className="rounded-lg object-contain max-h-[350px] w-full bg-slate-900"
+                        onError={() => setImageLoadError('Original photo unavailable')}
+                      />
+                    ) : (
+                      <div className="p-8 text-center text-xs flex flex-col items-center justify-center gap-2">
+                        <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-1">
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <span className="font-semibold text-slate-700 text-sm">Original photo unavailable</span>
+                        <span className="text-slate-500 max-w-xs">
+                          The original file for this inspection photo is stored on local disk and is not available in cloud storage.
+                        </span>
+                      </div>
                     )}
                   </div>
                 )}

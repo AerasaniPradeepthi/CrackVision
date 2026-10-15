@@ -62,8 +62,18 @@ export default function InspectionPhotoUploader({
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [deleteError, setDeleteError] = useState(null)
   const [deleteSuccess, setDeleteSuccess] = useState(null)
+  const [uploadTab, setUploadTab] = useState('file') // 'file' or 'url'
+  const [cloudinaryUrl, setCloudinaryUrl] = useState('')
+  const [customFilename, setCustomFilename] = useState('')
 
   const fileInputRef = useRef(null)
+
+  const SAMPLE_CLOUDINARY_PHOTOS = [
+    { name: 'Pillar Crack', filename: 'pillarcrack.png', url: 'https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/pillarcrack' },
+    { name: 'Beam Crack', filename: 'beam.png', url: 'https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/beam' },
+    { name: 'Stock Crack 1', filename: 'istockphoto-693649778-170667a.jpg', url: 'https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/istockphoto-693649778-170667a' },
+    { name: 'Stock Crack 2', filename: 'istockphoto-821516444-1024x1024.jpg', url: 'https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/istockphoto-821516444-1024x1024' },
+  ]
 
   // Revoke preview object URL on unmount or file change
   useEffect(() => {
@@ -212,6 +222,56 @@ export default function InspectionPhotoUploader({
   const handleUploadAnother = () => {
     handleClearSelected()
     setUploadedImage(null)
+    setCloudinaryUrl('')
+    setCustomFilename('')
+  }
+
+  const handleLinkCloudinary = async (e) => {
+    if (e) e.preventDefault()
+    if (!cloudinaryUrl || !inspectionId) return
+
+    const trimmedUrl = cloudinaryUrl.trim()
+    if (!trimmedUrl.toLowerCase().startsWith('https://') || !trimmedUrl.toLowerCase().includes('.cloudinary.com/')) {
+      setUploadError('Please provide a valid, secure HTTPS Cloudinary URL (e.g., https://res.cloudinary.com/...)')
+      return
+    }
+
+    setUploading(true)
+    setUploadError(null)
+
+    try {
+      const res = await fetch(`/api/inspections/${inspectionId}/images/url`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          imageUrl: trimmedUrl,
+          originalFilename: customFilename.trim() || undefined,
+        }),
+      })
+
+      if (!res.ok) {
+        let errorMsg = `Server error linking image (HTTP ${res.status})`
+        try {
+          const errData = await res.json()
+          if (errData?.error) errorMsg = errData.error
+          else if (errData?.message) errorMsg = errData.message
+        } catch {}
+        throw new Error(errorMsg)
+      }
+
+      const data = await res.json()
+      setUploadedImage(data)
+      if (onUploadSuccess) {
+        onUploadSuccess(data)
+      }
+    } catch (err) {
+      setUploadError(err.message || 'Failed to link Cloudinary image.')
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -343,12 +403,44 @@ export default function InspectionPhotoUploader({
                 Attach Inspection Photo
               </span>
               <span className="text-[11px] text-slate-500">
-                JPEG, PNG, or WebP &bull; Maximum 10 MB
+                JPEG, PNG, or WebP &bull; Cloudinary or Local
               </span>
             </div>
             <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
               Inspection #{inspectionId}
             </span>
+          </div>
+
+          {/* Mode Selector Tabs */}
+          <div className="flex border-b border-slate-200 gap-4 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setUploadTab('file')
+                setUploadError(null)
+              }}
+              className={`pb-2 text-xs font-semibold border-b-2 cursor-pointer transition-colors ${
+                uploadTab === 'file'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Upload Local File
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUploadTab('url')
+                setUploadError(null)
+              }}
+              className={`pb-2 text-xs font-semibold border-b-2 cursor-pointer transition-colors ${
+                uploadTab === 'url'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Link Cloudinary Image URL
+            </button>
           </div>
 
           {/* Validation or API Error Banner */}
@@ -363,7 +455,7 @@ export default function InspectionPhotoUploader({
                   <span>{uploadError}</span>
                 </div>
               </div>
-              {selectedFile && (
+              {uploadTab === 'file' && selectedFile && (
                 <button
                   type="button"
                   onClick={handleUpload}
@@ -376,69 +468,191 @@ export default function InspectionPhotoUploader({
             </div>
           )}
 
-          {/* Selected File Preview Box */}
-          {selectedFile && previewUrl ? (
-            <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3.5 space-y-3">
-              <div className="flex items-start gap-3.5">
-                {/* Image Thumbnail */}
-                <div className="relative h-20 w-20 rounded-lg overflow-hidden border border-slate-200 bg-white shrink-0 shadow-2xs">
-                  <img
-                    src={previewUrl}
-                    alt={selectedFile.name}
-                    className="h-full w-full object-cover"
-                  />
+          {uploadTab === 'file' ? (
+            /* File Upload Tab */
+            selectedFile && previewUrl ? (
+              <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3.5 space-y-3">
+                <div className="flex items-start gap-3.5">
+                  <div className="relative h-20 w-20 rounded-lg overflow-hidden border border-slate-200 bg-white shrink-0 shadow-2xs">
+                    <img
+                      src={previewUrl}
+                      alt={selectedFile.name}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-900 truncate" title={selectedFile.name}>
+                        {selectedFile.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                      <span className="font-mono">{formatFileSize(selectedFile.size)}</span>
+                      <span>&bull;</span>
+                      <span className="uppercase text-[10px] font-semibold text-blue-700 bg-blue-100/70 px-1.5 py-0.5 rounded">
+                        {selectedFile.type.replace('image/', '') || 'IMAGE'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Ready to attach to Inspection #{inspectionId}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleClearSelected}
+                    disabled={uploading}
+                    className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors cursor-pointer disabled:opacity-50"
+                    title="Remove image"
+                    aria-label="Remove image"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
                 </div>
 
-                {/* File Details */}
-                <div className="flex-1 min-w-0 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-900 truncate" title={selectedFile.name}>
-                      {selectedFile.name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                    <span className="font-mono">{formatFileSize(selectedFile.size)}</span>
-                    <span>&bull;</span>
-                    <span className="uppercase text-[10px] font-semibold text-blue-700 bg-blue-100/70 px-1.5 py-0.5 rounded">
-                      {selectedFile.type.replace('image/', '') || 'IMAGE'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    Ready to attach to Inspection #{inspectionId}
-                  </p>
-                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-blue-200/60">
+                  <button
+                    type="button"
+                    onClick={handleClearSelected}
+                    disabled={uploading}
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900 cursor-pointer disabled:opacity-50"
+                  >
+                    Choose Different File
+                  </button>
 
-                {/* Remove button */}
-                <button
-                  type="button"
-                  onClick={handleClearSelected}
-                  disabled={uploading}
-                  className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors cursor-pointer disabled:opacity-50"
-                  title="Remove image"
-                  aria-label="Remove image"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  <button
+                    type="button"
+                    onClick={handleUpload}
+                    disabled={uploading}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {uploading && (
+                      <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                    )}
+                    <span>{uploading ? 'Uploading Photo...' : 'Upload Photo'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
+                  isDragging
+                    ? 'border-blue-500 bg-blue-50/50'
+                    : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50/70 bg-white'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                  onChange={handleInputChange}
+                  className="hidden"
+                />
+
+                <div className="mx-auto h-10 w-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2.5">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7" />
+                    <line x1="16" x2="22" y1="5" y2="5" />
+                    <line x1="19" x2="19" y1="2" y2="8" />
+                    <circle cx="9" cy="9" r="2" />
+                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
                   </svg>
-                </button>
+                </div>
+
+                <div className="text-xs font-semibold text-slate-800">
+                  <span className="text-blue-600 hover:underline">Click to upload photo</span> or drag and drop
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  JPEG, PNG, or WebP up to 10 MB
+                </p>
+              </div>
+            )
+          ) : (
+            /* Cloudinary URL Linking Tab */
+            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3.5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Cloudinary Image URL <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="url"
+                  value={cloudinaryUrl}
+                  onChange={(e) => setCloudinaryUrl(e.target.value)}
+                  placeholder="https://res.cloudinary.com/dudhz46j/image/upload/..."
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-hidden focus:border-blue-500 font-mono"
+                />
               </div>
 
-              {/* Upload Action Button */}
-              <div className="flex items-center justify-between pt-2 border-t border-blue-200/60">
-                <button
-                  type="button"
-                  onClick={handleClearSelected}
-                  disabled={uploading}
-                  className="text-xs font-medium text-slate-600 hover:text-slate-900 cursor-pointer disabled:opacity-50"
-                >
-                  Choose Different File
-                </button>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Original Filename / Label (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={customFilename}
+                  onChange={(e) => setCustomFilename(e.target.value)}
+                  placeholder="e.g., pillarcrack.png or column-beam-joint.jpg"
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-hidden focus:border-blue-500"
+                />
+              </div>
 
+              {/* Quick Sample Photos */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-medium text-slate-500 block">
+                  Quick attach accessible Cloudinary sample:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {SAMPLE_CLOUDINARY_PHOTOS.map((sample) => (
+                    <button
+                      key={sample.name}
+                      type="button"
+                      onClick={() => {
+                        setCloudinaryUrl(sample.url)
+                        setCustomFilename(sample.filename)
+                        setUploadError(null)
+                      }}
+                      className="px-2.5 py-1 text-[11px] rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                    >
+                      {sample.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* URL Preview if valid */}
+              {cloudinaryUrl && cloudinaryUrl.startsWith('https://') && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 flex items-center gap-3">
+                  <img
+                    src={cloudinaryUrl}
+                    alt="Cloudinary preview"
+                    className="h-16 w-16 object-cover rounded-md border border-slate-200 bg-white shrink-0"
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                    }}
+                  />
+                  <div className="min-w-0 text-xs">
+                    <p className="font-semibold text-slate-800">Preview Available</p>
+                    <p className="text-[11px] text-slate-500 truncate max-w-xs">{cloudinaryUrl}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 flex justify-end">
                 <button
                   type="button"
-                  onClick={handleUpload}
-                  disabled={uploading}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleLinkCloudinary}
+                  disabled={uploading || !cloudinaryUrl.trim()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploading && (
                     <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
@@ -446,47 +660,9 @@ export default function InspectionPhotoUploader({
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
                   )}
-                  <span>{uploading ? 'Uploading Photo...' : 'Upload Photo'}</span>
+                  <span>{uploading ? 'Linking Photo...' : 'Link Cloudinary Photo'}</span>
                 </button>
               </div>
-            </div>
-          ) : (
-            /* File Picker & Drop Zone */
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
-                isDragging
-                  ? 'border-blue-500 bg-blue-50/50'
-                  : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50/70 bg-white'
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-                onChange={handleInputChange}
-                className="hidden"
-              />
-
-              <div className="mx-auto h-10 w-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2.5">
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7" />
-                  <line x1="16" x2="22" y1="5" y2="5" />
-                  <line x1="19" x2="19" y1="2" y2="8" />
-                  <circle cx="9" cy="9" r="2" />
-                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                </svg>
-              </div>
-
-              <div className="text-xs font-semibold text-slate-800">
-                <span className="text-blue-600 hover:underline">Click to upload photo</span> or drag and drop
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                JPEG, PNG, or WebP up to 10 MB
-              </p>
             </div>
           )}
         </div>

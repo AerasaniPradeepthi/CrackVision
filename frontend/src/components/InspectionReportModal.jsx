@@ -122,20 +122,25 @@ export default function InspectionReportModal({
           setAnalyses(normA)
           setReviews(normR)
 
-          // If images exist and no highlighted image is available, load first image blob
+          // If images exist and no highlighted image is available, load first image preview
           if (normI.length > 0) {
             const firstImg = normI[0]
-            fetch(`/api/inspections/${inspection.id}/images/${firstImg.id}`, {
-              headers: authHeaders(),
-            })
-              .then((res) => (res.ok ? res.blob() : null))
-              .then((blob) => {
-                if (active && blob) {
-                  blobUrlToRevoke = URL.createObjectURL(blob)
-                  setOriginalBlobUrl(blobUrlToRevoke)
-                }
+            const directUrl = firstImg.imageUrl || (firstImg.storagePath?.startsWith('http') ? firstImg.storagePath : null)
+            if (directUrl && directUrl.startsWith('http')) {
+              setOriginalBlobUrl(directUrl)
+            } else {
+              fetch(`/api/inspections/${inspection.id}/images/${firstImg.id}`, {
+                headers: authHeaders(),
               })
-              .catch(() => {})
+                .then((res) => (res.ok ? res.blob() : null))
+                .then((blob) => {
+                  if (active && blob) {
+                    blobUrlToRevoke = URL.createObjectURL(blob)
+                    setOriginalBlobUrl(blobUrlToRevoke)
+                  }
+                })
+                .catch(() => {})
+            }
           }
         }
       } catch (err) {
@@ -149,7 +154,7 @@ export default function InspectionReportModal({
 
     return () => {
       active = false
-      if (blobUrlToRevoke) {
+      if (blobUrlToRevoke && blobUrlToRevoke.startsWith('blob:')) {
         URL.revokeObjectURL(blobUrlToRevoke)
       }
     }

@@ -72,4 +72,41 @@ class InspectionImageControllerTest {
 
         verify(inspectionImageService, times(1)).deleteImage(1L, 99L);
     }
+
+    @Test
+    @DisplayName("GET /api/inspections/{inspectionId}/images/{imageId} should return 302 redirect for Cloudinary URLs")
+    void getImageFile_CloudinaryRedirect() throws Exception {
+        com.crackvision.backend.entity.InspectionImage cloudImg = new com.crackvision.backend.entity.InspectionImage();
+        cloudImg.setId(5L);
+        cloudImg.setStoragePath("https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/pillarcrack");
+        cloudImg.setOriginalFilename("pillarcrack.png");
+        cloudImg.setContentType("image/png");
+
+        when(inspectionImageService.getImageMetadata(1L, 5L)).thenReturn(cloudImg);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/inspections/1/images/5"))
+                .andExpect(status().isFound())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location", "https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/pillarcrack"));
+    }
+
+    @Test
+    @DisplayName("POST /api/inspections/{inspectionId}/images/url should return 201 on valid Cloudinary link")
+    void linkImageUrl_Success() throws Exception {
+        com.crackvision.backend.entity.InspectionImage linkedImg = new com.crackvision.backend.entity.InspectionImage();
+        linkedImg.setId(6L);
+        linkedImg.setStoragePath("https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/beam");
+        linkedImg.setOriginalFilename("beam.png");
+        linkedImg.setContentType("image/png");
+
+        when(inspectionImageService.linkImageUrl(eq(1L), eq("https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/beam"), eq("beam.png")))
+                .thenReturn(linkedImg);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/inspections/1/images/url")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"imageUrl\":\"https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/beam\",\"originalFilename\":\"beam.png\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id", is(6)))
+                .andExpect(jsonPath("$.originalFilename", is("beam.png")))
+                .andExpect(jsonPath("$.storagePath", is("https://res.cloudinary.com/dudhz46j/image/upload/f_auto,q_auto/beam")));
+    }
 }

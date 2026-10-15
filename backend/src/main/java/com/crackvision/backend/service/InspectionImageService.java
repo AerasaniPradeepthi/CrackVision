@@ -40,6 +40,7 @@ public class InspectionImageService {
     private final InspectionService inspectionService;
     private final AiAnalysisResultRepository aiAnalysisResultRepository;
     private final EngineerReviewRepository engineerReviewRepository;
+    private final CloudinaryService cloudinaryService;
 
     @Value("${crackvision.upload.dir:uploads/inspections}")
     private String uploadDir;
@@ -47,11 +48,13 @@ public class InspectionImageService {
     public InspectionImageService(InspectionImageRepository inspectionImageRepository,
                                   InspectionService inspectionService,
                                   AiAnalysisResultRepository aiAnalysisResultRepository,
-                                  EngineerReviewRepository engineerReviewRepository) {
+                                  EngineerReviewRepository engineerReviewRepository,
+                                  CloudinaryService cloudinaryService) {
         this.inspectionImageRepository = inspectionImageRepository;
         this.inspectionService = inspectionService;
         this.aiAnalysisResultRepository = aiAnalysisResultRepository;
         this.engineerReviewRepository = engineerReviewRepository;
+        this.cloudinaryService = cloudinaryService;
     }
 
     private Path getUploadPath() {
@@ -98,6 +101,29 @@ public class InspectionImageService {
 
         Inspection inspection = inspectionService.getInspectionById(inspectionId);
 
+        // 1. If Cloudinary is configured, upload to cloud storage
+        if (cloudinaryService != null && cloudinaryService.isConfigured()) {
+            String folder = "crackvision/inspections/" + inspectionId;
+            String secureUrl = cloudinaryService.uploadImage(file, folder);
+
+            String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "inspection_photo.jpg";
+            String storedFilename = CloudinaryService.extractPublicId(secureUrl);
+            if (storedFilename == null || storedFilename.isBlank()) {
+                storedFilename = UUID.randomUUID().toString();
+            }
+
+            InspectionImage image = new InspectionImage();
+            image.setInspection(inspection);
+            image.setOriginalFilename(originalFilename);
+            image.setStoredFilename(storedFilename);
+            image.setStoragePath(secureUrl);
+            image.setContentType(contentType.toLowerCase());
+            image.setFileSize(file.getSize());
+
+            return inspectionImageRepository.save(image);
+        }
+
+        // 2. Fallback to local storage
         String extension = determineExtension(file.getOriginalFilename(), contentType);
         String storedFilename = UUID.randomUUID().toString() + extension;
 
@@ -127,6 +153,66 @@ public class InspectionImageService {
         return inspectionImageRepository.save(image);
     }
 
+    /**
+     * Associates an existing trusted Cloudinary image URL directly with an inspection.
+     * Prevents SSRF by validating the URL against trusted HTTPS Cloudinary domains.
+     */
+    public InspectionImage linkImageUrl(Long inspectionId, String imageUrl, String customFilename) {
+        if (imageUrl == null || imageUrl.trim().isEmpty()) {
+            throw new IllegalArgumentException("Image URL cannot be empty");
+        }
+
+        String normalizedUrl = imageUrl.trim();
+        CloudinaryService.validateTrustedCloudinaryUrl(normalizedUrl);
+
+        Inspection inspection = inspectionService.getInspectionById(inspectionId);
+
+        String filename = customFilename != null && !customFilename.isBlank()
+                ? customFilename.trim()
+                : extractFilenameFromUrl(normalizedUrl);
+
+        String storedFilename = CloudinaryService.extractPublicId(normalizedUrl);
+        if (storedFilename == null || storedFilename.isBlank()) {
+            storedFilename = filename;
+        }
+
+        String contentType = determineContentTypeFromFilenameOrUrl(filename, normalizedUrl);
+
+        InspectionImage image = new InspectionImage();
+        image.setInspection(inspection);
+        image.setOriginalFilename(filename);
+        image.setStoredFilename(storedFilename);
+        image.setStoragePath(normalizedUrl);
+        image.setContentType(contentType);
+        image.setFileSize(0L);
+
+        return inspectionImageRepository.save(image);
+    }
+
+    private String extractFilenameFromUrl(String url) {
+        if (url == null || url.isBlank()) return "photo.jpg";
+        String path = url;
+        int queryIdx = path.indexOf('?');
+        if (queryIdx != -1) path = path.substring(0, queryIdx);
+        int slashIdx = path.lastIndexOf('/');
+        String lastPart = slashIdx != -1 ? path.substring(slashIdx + 1) : path;
+        if (!lastPart.contains(".")) {
+            lastPart = lastPart + ".jpg";
+        }
+        return lastPart;
+    }
+
+    private String determineContentTypeFromFilenameOrUrl(String filename, String url) {
+        String lower = (filename + " " + url).toLowerCase();
+        if (lower.contains(".png") || lower.contains("/png")) {
+            return "image/png";
+        }
+        if (lower.contains(".webp") || lower.contains("/webp")) {
+            return "image/webp";
+        }
+        return "image/jpeg";
+    }
+
     public List<InspectionImage> getImagesByInspectionId(Long inspectionId) {
         inspectionService.getInspectionById(inspectionId);
         return inspectionImageRepository.findByInspectionId(inspectionId);
@@ -139,6 +225,28 @@ public class InspectionImageService {
     }
 
     public Resource loadResource(InspectionImage image) {
+        if (image == null) {
+            throw new IllegalArgumentException("Inspection image cannot be null");
+        }
+
+        String storagePath = image.getStoragePath();
+
+        // 1. If stored as a remote Cloudinary URL, validate against SSRF and return UrlResource
+        if (CloudinaryService.isCloudinaryUrl(storagePath)) {
+            CloudinaryService.validateTrustedCloudinaryUrl(storagePath);
+            try {
+                Resource resource = new UrlResource(java.net.URI.create(storagePath).toURL());
+                if (resource.exists() && resource.isReadable()) {
+                    return resource;
+                } else {
+                    throw new RuntimeException("Cloudinary image resource not accessible at " + storagePath);
+                }
+            } catch (MalformedURLException e) {
+                throw new RuntimeException("Invalid Cloudinary image URL: " + storagePath, e);
+            }
+        }
+
+        // 2. Fallback to local filesystem storage
         Path uploadPath = getUploadPath();
         Path filePath = uploadPath.resolve(image.getStoredFilename()).normalize();
 
@@ -194,13 +302,19 @@ public class InspectionImageService {
         }
 
         // Delete physical file from storage
-        Path uploadPath = getUploadPath();
-        Path filePath = uploadPath.resolve(image.getStoredFilename()).normalize();
-        if (filePath.startsWith(uploadPath)) {
-            try {
-                Files.deleteIfExists(filePath);
-            } catch (IOException e) {
-                // Log warning but proceed with record cleanup
+        if (CloudinaryService.isCloudinaryUrl(image.getStoragePath())) {
+            if (cloudinaryService != null) {
+                cloudinaryService.deleteImageByPublicIdOrUrl(image.getStoragePath());
+            }
+        } else {
+            Path uploadPath = getUploadPath();
+            Path filePath = uploadPath.resolve(image.getStoredFilename()).normalize();
+            if (filePath.startsWith(uploadPath)) {
+                try {
+                    Files.deleteIfExists(filePath);
+                } catch (IOException e) {
+                    // Log warning but proceed with record cleanup
+                }
             }
         }
 
