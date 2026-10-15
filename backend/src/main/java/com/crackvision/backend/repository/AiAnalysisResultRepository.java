@@ -12,21 +12,21 @@ import java.util.Optional;
 @Repository
 public interface AiAnalysisResultRepository extends JpaRepository<AiAnalysisResult, Long> {
 
-    @Query("SELECT r FROM AiAnalysisResult r WHERE r.inspection.id = :inspectionId ORDER BY r.createdAt DESC")
+    @Query("SELECT r FROM AiAnalysisResult r LEFT JOIN FETCH r.inspectionImage WHERE r.inspection.id = :inspectionId ORDER BY r.createdAt DESC")
     List<AiAnalysisResult> findByInspectionIdOrderByCreatedAtDesc(@Param("inspectionId") Long inspectionId);
 
-    @Query("SELECT r FROM AiAnalysisResult r WHERE r.inspectionImage.id = :imageId ORDER BY r.createdAt DESC")
+    @Query("SELECT r FROM AiAnalysisResult r LEFT JOIN FETCH r.inspectionImage WHERE r.inspectionImage.id = :imageId ORDER BY r.createdAt DESC")
     List<AiAnalysisResult> findByInspectionImageIdOrderByCreatedAtDesc(@Param("imageId") Long imageId);
 
-    @Query("SELECT r FROM AiAnalysisResult r WHERE r.inspectionImage.id = :imageId ORDER BY r.createdAt DESC LIMIT 1")
+    @Query("SELECT r FROM AiAnalysisResult r LEFT JOIN FETCH r.inspectionImage WHERE r.inspectionImage.id = :imageId ORDER BY r.createdAt DESC LIMIT 1")
     Optional<AiAnalysisResult> findLatestByInspectionImageId(@Param("imageId") Long imageId);
 
-    @Query("SELECT r FROM AiAnalysisResult r WHERE r.inspection.id = :inspectionId ORDER BY r.createdAt DESC LIMIT 1")
+    @Query("SELECT r FROM AiAnalysisResult r LEFT JOIN FETCH r.inspectionImage WHERE r.inspection.id = :inspectionId ORDER BY r.createdAt DESC LIMIT 1")
     Optional<AiAnalysisResult> findLatestByInspectionId(@Param("inspectionId") Long inspectionId);
 
-    @Query("SELECT r FROM AiAnalysisResult r WHERE r.inspection.component.id = :componentId AND r.status = 'SUCCESS' ORDER BY r.analyzedAt ASC, r.id ASC")
+    @Query("SELECT r FROM AiAnalysisResult r LEFT JOIN FETCH r.inspectionImage WHERE r.inspection.component.id = :componentId AND r.status = 'SUCCESS' ORDER BY r.analyzedAt ASC, r.id ASC")
     List<AiAnalysisResult> findSuccessfulByComponentIdOrderByAnalyzedAtAsc(@Param("componentId") Long componentId);
 
-    @Query("SELECT r FROM AiAnalysisResult r WHERE r.inspection.component.id = :componentId AND r.status = 'SUCCESS' ORDER BY r.analyzedAt DESC, r.id DESC")
+    @Query("SELECT r FROM AiAnalysisResult r LEFT JOIN FETCH r.inspectionImage WHERE r.inspection.component.id = :componentId AND r.status = 'SUCCESS' ORDER BY r.analyzedAt DESC, r.id DESC")
     List<AiAnalysisResult> findSuccessfulByComponentIdOrderByAnalyzedAtDesc(@Param("componentId") Long componentId);
 }

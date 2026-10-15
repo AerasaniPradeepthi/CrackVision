@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { resolveImageUrl } from '../api/config'
 
 function parseArrayResponse(data) {
   if (Array.isArray(data)) return data
@@ -29,17 +30,18 @@ function formatDate(dateStr) {
 
 function formatHighlightedImageUrl(url) {
   if (!url) return null
-  if (url.startsWith('/outputs/')) return url
-  if (url.startsWith('outputs/')) return `/${url}`
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (url.startsWith('/outputs/')) return resolveImageUrl(url)
+  if (url.startsWith('outputs/')) return resolveImageUrl(`/${url}`)
   try {
     const parsed = new URL(url)
     if (parsed.pathname.startsWith('/outputs')) {
-      return parsed.pathname
+      return resolveImageUrl(parsed.pathname)
     }
   } catch {
     // not full url
   }
-  return url
+  return resolveImageUrl(url)
 }
 
 function getCategoryBadge(category) {
@@ -87,6 +89,8 @@ export default function InspectionReportModal({
 
   // Report image preview blob
   const [originalBlobUrl, setOriginalBlobUrl] = useState(null)
+  const [attemptOverlayFailed, setAttemptOverlayFailed] = useState(false)
+  const [imageError, setImageError] = useState(false)
 
   const authHeaders = useCallback(() => {
     return token ? { Authorization: `Bearer ${token}` } : {}
@@ -99,6 +103,8 @@ export default function InspectionReportModal({
     let active = true
     let blobUrlToRevoke = null
     const loadReportData = async () => {
+      setAttemptOverlayFailed(false)
+      setImageError(false)
       setLoading(true)
       setError(null)
 
@@ -169,7 +175,7 @@ export default function InspectionReportModal({
   const latestAnalysis = analyses.length > 0 ? analyses[analyses.length - 1] : null
   const latestReview = reviews.length > 0 ? reviews[reviews.length - 1] : null
   const highlightedUrl = latestAnalysis ? formatHighlightedImageUrl(latestAnalysis.highlightedImageUrl) : null
-  const displayImageSrc = highlightedUrl || originalBlobUrl
+  const candidateImageSrc = (!attemptOverlayFailed && highlightedUrl) ? highlightedUrl : originalBlobUrl
 
   const comp = inspection.component
   const floor = comp?.floor
@@ -336,14 +342,26 @@ export default function InspectionReportModal({
 
                     {/* Visual Evidence Photo */}
                     <div className="rounded-lg border border-slate-200 overflow-hidden bg-slate-900 flex items-center justify-center aspect-4/3">
-                      {displayImageSrc ? (
+                      {candidateImageSrc && !imageError ? (
                         <img
-                          src={displayImageSrc}
+                          src={candidateImageSrc}
                           alt="Inspection visual evidence"
                           className="max-h-full max-w-full object-contain"
+                          onError={() => {
+                            if (!attemptOverlayFailed && highlightedUrl && originalBlobUrl) {
+                              setAttemptOverlayFailed(true)
+                            } else {
+                              setImageError(true)
+                            }
+                          }}
                         />
                       ) : (
-                        <span className="text-xs text-slate-400">Photo record unavailable</span>
+                        <div className="flex flex-col items-center justify-center p-4 text-center text-slate-400">
+                          <svg className="h-6 w-6 text-slate-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-xs">Photo record unavailable</span>
+                        </div>
                       )}
                     </div>
                   </div>

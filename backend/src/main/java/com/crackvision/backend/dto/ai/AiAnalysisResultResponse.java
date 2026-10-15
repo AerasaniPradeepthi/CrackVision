@@ -15,6 +15,9 @@ public class AiAnalysisResultResponse {
     private Double crackAreaPercentage;
     private Integer regionsCount;
     private String highlightedImageUrl;
+    private String imageUrl;
+    private String storagePath;
+    private String originalFilename;
     private String modelName;
     private String modelVersion;
     private String modelType;
@@ -32,6 +35,11 @@ public class AiAnalysisResultResponse {
             this.id = entity.getId();
             this.inspectionId = entity.getInspectionId();
             this.imageId = entity.getImageId();
+            if (entity.getInspectionImage() != null) {
+                this.imageUrl = entity.getInspectionImage().getImageUrl();
+                this.storagePath = entity.getInspectionImage().getStoragePath();
+                this.originalFilename = entity.getInspectionImage().getOriginalFilename();
+            }
             this.crackDetected = entity.getCrackDetected();
             this.screeningCategory = entity.getScreeningCategory();
             this.confidence = entity.getConfidence();
@@ -183,5 +191,29 @@ public class AiAnalysisResultResponse {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    public String getStoragePath() {
+        return storagePath;
+    }
+
+    public void setStoragePath(String storagePath) {
+        this.storagePath = storagePath;
+    }
+
+    public String getOriginalFilename() {
+        return originalFilename;
+    }
+
+    public void setOriginalFilename(String originalFilename) {
+        this.originalFilename = originalFilename;
     }
 }

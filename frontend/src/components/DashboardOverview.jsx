@@ -3,6 +3,7 @@ import NewInspectionModal from './NewInspectionModal'
 import UploadPhotoModal from './UploadPhotoModal'
 import AiAnalysisModal from './AiAnalysisModal'
 import SubmitReviewModal from './SubmitReviewModal'
+import { resolveImageUrl } from '../api/config'
 
 function parseArrayResponse(data) {
   if (Array.isArray(data)) return data
@@ -45,17 +46,76 @@ function formatShortDate(dateStr) {
 
 function formatHighlightedImageUrl(url) {
   if (!url) return null
-  if (url.startsWith('/outputs/')) return url
-  if (url.startsWith('outputs/')) return `/${url}`
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (url.startsWith('/outputs/')) return resolveImageUrl(url)
+  if (url.startsWith('outputs/')) return resolveImageUrl(`/${url}`)
   try {
     const parsed = new URL(url)
     if (parsed.pathname.startsWith('/outputs')) {
-      return parsed.pathname
+      return resolveImageUrl(parsed.pathname)
     }
   } catch {
     // not a full url
   }
-  return url
+  return resolveImageUrl(url)
+}
+
+function AnalysisEvidenceImage({ analysis }) {
+  const [attemptOverlayFailed, setAttemptOverlayFailed] = useState(false)
+  const [allFailed, setAllFailed] = useState(false)
+
+  // 1. Prioritize Cloudinary / direct HTTPS photo imageUrl or storagePath
+  const directPhotoUrl =
+    (analysis.imageUrl && /^https?:\/\//i.test(analysis.imageUrl)) ? analysis.imageUrl :
+    (analysis.storagePath && /^https?:\/\//i.test(analysis.storagePath)) ? analysis.storagePath : null
+
+  // 2. Detection overlay URL
+  const overlayUrl = formatHighlightedImageUrl(analysis.highlightedImageUrl)
+
+  // 3. Fallback relative image URL
+  const relativePhotoUrl = analysis.imageUrl || analysis.storagePath || null
+
+  // If direct Cloudinary photo is available, load it directly
+  // Otherwise if overlay is available and hasn't failed, try overlay
+  // Otherwise try relativePhotoUrl
+  const candidateUrl = directPhotoUrl
+    ? directPhotoUrl
+    : (!attemptOverlayFailed && overlayUrl)
+    ? overlayUrl
+    : relativePhotoUrl
+
+  const resolvedSrc = resolveImageUrl(candidateUrl)
+
+  if (!resolvedSrc || allFailed) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 p-2 text-center text-slate-400">
+        <svg className="h-6 w-6 text-slate-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <span className="text-[11px] font-semibold text-slate-300">
+          {analysis.crackDetected ? 'Crack Detected' : 'Inspection Photo'}
+        </span>
+        <span className="text-[9px] text-slate-500 font-mono mt-0.5 truncate max-w-[140px]">
+          {analysis.originalFilename || `Image #${analysis.imageId || analysis.id}`}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={resolvedSrc}
+      alt={analysis.originalFilename || 'Detection Evidence'}
+      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+      onError={() => {
+        if (!attemptOverlayFailed && overlayUrl && candidateUrl === overlayUrl && (directPhotoUrl || relativePhotoUrl)) {
+          setAttemptOverlayFailed(true)
+        } else {
+          setAllFailed(true)
+        }
+      }}
+    />
+  )
 }
 
 function getStatusBadge(status) {
@@ -201,7 +261,7 @@ export default function DashboardOverview({
     }
   }, [isAdmin, effectiveRole, token, authHeaders])
 
-  // Fetch recent AI analysis results for Engineer and Worker roles
+  // Fetch recent AI analysis results and photo metadata for Engineer and Worker roles
   useEffect(() => {
     if (effectiveRole !== 'SITE_ENGINEER' && effectiveRole !== 'SITE_WORKER') return
     if (!token || inspections.length === 0) return
@@ -210,13 +270,27 @@ export default function DashboardOverview({
     const topInspections = inspections.slice(0, 8)
     Promise.all(
       topInspections.map((insp) =>
-        fetch(`/api/inspections/${insp.id}/analysis`, { headers: authHeaders() })
-          .then((res) => (res.ok ? res.json() : []))
-          .then((data) => {
-            const list = parseArrayResponse(data)
-            return list.map((a) => ({ ...a, inspection: insp }))
+        Promise.all([
+          fetch(`/api/inspections/${insp.id}/analysis`, { headers: authHeaders() })
+            .then((res) => (res.ok ? res.json() : []))
+            .catch(() => []),
+          fetch(`/api/inspections/${insp.id}/images`, { headers: authHeaders() })
+            .then((res) => (res.ok ? res.json() : []))
+            .catch(() => []),
+        ]).then(([analysisData, imagesData]) => {
+          const list = parseArrayResponse(analysisData)
+          const imgs = parseArrayResponse(imagesData)
+          return list.map((a) => {
+            const matchedImg = imgs.find((img) => String(img.id) === String(a.imageId))
+            return {
+              ...a,
+              inspection: { ...insp, images: imgs },
+              imageUrl: a.imageUrl || matchedImg?.imageUrl || null,
+              storagePath: a.storagePath || matchedImg?.storagePath || null,
+              originalFilename: a.originalFilename || matchedImg?.originalFilename || null,
+            }
           })
-          .catch(() => [])
+        })
       )
     )
       .then((results) => {
@@ -807,7 +881,6 @@ export default function DashboardOverview({
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                 {recentAnalyses.slice(0, 4).map((analysis) => {
-                  const imgUrl = formatHighlightedImageUrl(analysis.highlightedImageUrl)
                   const category =
                     analysis.screeningCategory ||
                     (analysis.crackDetected ? 'CRITICAL' : 'NO_CRACK_DETECTED')
@@ -829,19 +902,8 @@ export default function DashboardOverview({
                       className="group bg-slate-50 hover:bg-white rounded-lg border border-slate-200 hover:border-blue-300 p-3 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between"
                     >
                       <div>
-                        <div className="relative w-full h-28 rounded bg-slate-200 overflow-hidden mb-2.5 flex items-center justify-center">
-                          {imgUrl ? (
-                            <img
-                              src={imgUrl}
-                              alt="Detection Overlay"
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                              onError={(e) => {
-                                e.target.style.display = 'none'
-                              }}
-                            />
-                          ) : (
-                            <div className="text-slate-400 text-[10px]">No image preview</div>
-                          )}
+                        <div className="relative w-full h-28 rounded bg-slate-900 overflow-hidden mb-2.5 flex items-center justify-center">
+                          <AnalysisEvidenceImage analysis={analysis} />
                           <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/60 text-white backdrop-blur-xs">
                             {analysis.crackAreaPercentage != null
                               ? `${analysis.crackAreaPercentage.toFixed(2)}% Area`
@@ -1204,7 +1266,6 @@ export default function DashboardOverview({
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {recentAnalyses.slice(0, 4).map((analysis) => {
-                    const imgUrl = formatHighlightedImageUrl(analysis.highlightedImageUrl)
                     const category =
                       analysis.screeningCategory ||
                       (analysis.crackDetected ? 'CRITICAL' : 'NO_CRACK_DETECTED')
@@ -1231,25 +1292,9 @@ export default function DashboardOverview({
                         className="group bg-slate-50 hover:bg-white rounded-lg border border-slate-200 hover:border-blue-300 p-3 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between"
                       >
                         <div>
-                          {/* Highlighted image preview */}
-                          <div className="relative w-full h-32 rounded bg-slate-200 overflow-hidden mb-2.5 flex items-center justify-center">
-                            {imgUrl ? (
-                              <img
-                                src={imgUrl}
-                                alt="AI Detection Overlay"
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                                onError={(e) => {
-                                  e.target.style.display = 'none'
-                                }}
-                              />
-                            ) : (
-                              <div className="flex flex-col items-center justify-center text-slate-400 gap-1">
-                                <svg className="w-6 h-6 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                                <span className="text-[10px]">No image preview</span>
-                              </div>
-                            )}
+                          {/* Image preview with Cloudinary & overlay fallback */}
+                          <div className="relative w-full h-32 rounded bg-slate-900 overflow-hidden mb-2.5 flex items-center justify-center">
+                            <AnalysisEvidenceImage analysis={analysis} />
                             <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/60 text-white backdrop-blur-xs">
                               {analysis.crackAreaPercentage != null
                                 ? `${analysis.crackAreaPercentage.toFixed(2)}% Area`

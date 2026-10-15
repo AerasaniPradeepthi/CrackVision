@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { resolveImageUrl } from '../api/config'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
@@ -294,6 +295,31 @@ export default function InspectionPhotoUploader({
               </p>
             </div>
           </div>
+
+          {/* Visual Image Preview of Uploaded Photo */}
+          {(() => {
+            const uploadPreviewSrc =
+              (uploadedImage.imageUrl && /^https?:\/\//i.test(uploadedImage.imageUrl))
+                ? uploadedImage.imageUrl
+                : (uploadedImage.storagePath && /^https?:\/\//i.test(uploadedImage.storagePath))
+                ? uploadedImage.storagePath
+                : (previewUrl || resolveImageUrl(uploadedImage.imageUrl))
+
+            if (!uploadPreviewSrc) return null
+
+            return (
+              <div className="relative w-full h-48 rounded-lg bg-slate-900 border border-emerald-300/40 overflow-hidden flex items-center justify-center">
+                <img
+                  src={uploadPreviewSrc}
+                  alt={uploadedImage.originalFilename || 'Uploaded inspection photo'}
+                  className="w-full h-full object-contain"
+                />
+                <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white backdrop-blur-xs truncate max-w-[200px]">
+                  {uploadedImage.originalFilename}
+                </span>
+              </div>
+            )
+          })()}
 
           {/* Returned Image Metadata Grid */}
           <div className="rounded-lg border border-emerald-200/80 bg-white p-3 space-y-2 text-xs">

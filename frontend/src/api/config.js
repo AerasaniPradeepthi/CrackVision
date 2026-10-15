@@ -4,7 +4,11 @@
  * and defaults to relative paths for local development (Vite proxy).
  */
 
-const RAW_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
+const RAW_BASE_URL = (
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ||
+  (typeof process !== 'undefined' && process.env?.VITE_API_BASE_URL) ||
+  ''
+).trim().replace(/\/+$/, '')
 
 export const API_BASE_URL = RAW_BASE_URL
 
@@ -30,6 +34,44 @@ export function apiUrl(endpoint = '') {
   }
 
   return `${API_BASE_URL}${cleanEndpoint}`
+}
+
+/**
+ * Resolves an image URL for display:
+ * - If url is already an absolute HTTP/HTTPS URL (e.g. Cloudinary), returns it as-is.
+ * - If url is a blob: or data: URI, returns it as-is.
+ * - If url is a relative path (e.g. /api/... or /outputs/...), resolves it against
+ *   API_BASE_URL if configured, otherwise returns the clean relative path.
+ * - Never double-prepends or corrupts valid URLs.
+ * - Returns null for empty / invalid input.
+ */
+export function resolveImageUrl(url) {
+  if (!url || typeof url !== 'string') return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+
+  // 1. Direct absolute URLs (e.g., https://res.cloudinary.com/...)
+  if (/^(?:https?:)?\/\//i.test(trimmed)) {
+    return trimmed
+  }
+
+  // 2. Blob or data URLs
+  if (/^(?:blob|data):/i.test(trimmed)) {
+    return trimmed
+  }
+
+  // 3. Relative path resolution
+  const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+
+  if (!API_BASE_URL) {
+    return cleanPath
+  }
+
+  if (API_BASE_URL.endsWith('/api') && cleanPath.startsWith('/api/')) {
+    return `${API_BASE_URL}${cleanPath.slice(4)}`
+  }
+
+  return `${API_BASE_URL}${cleanPath}`
 }
 
 /**

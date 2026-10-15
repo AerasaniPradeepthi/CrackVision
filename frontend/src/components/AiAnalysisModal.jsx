@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import SubmitReviewModal from './SubmitReviewModal'
+import { resolveImageUrl } from '../api/config'
 
 function getDecisionBadge(decision) {
   switch (decision) {
@@ -47,17 +48,18 @@ function formatDate(dateStr) {
 
 function formatHighlightedImageUrl(url) {
   if (!url) return null
-  if (url.startsWith('/outputs/')) return url
-  if (url.startsWith('outputs/')) return `/${url}`
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (url.startsWith('/outputs/')) return resolveImageUrl(url)
+  if (url.startsWith('outputs/')) return resolveImageUrl(`/${url}`)
   try {
     const parsed = new URL(url)
     if (parsed.pathname.startsWith('/outputs')) {
-      return parsed.pathname
+      return resolveImageUrl(parsed.pathname)
     }
   } catch {
     // not a full url
   }
-  return url
+  return resolveImageUrl(url)
 }
 
 export default function AiAnalysisModal({
